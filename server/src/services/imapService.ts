@@ -170,27 +170,40 @@ export const imapService = {
             const includeStarred = syncSettings.importStarred !== false; // Default to true if not set
 
             console.log(`📧 [IMAP] Cutoff date: ${cutoffDate.toISOString()}, importStarred: ${includeStarred}`);
-            console.log(`📧 [IMAP] Searching for: NOT $bucketed, NOT deleted`);
 
             let totalScanned = 0;
             let archivedSkipped = 0;
             let dateFilteredOut = 0;
             let savedToDb = 0;
 
-            // Fetch all non-bucketed, non-deleted emails
+            // Use the SAME broad search that getInboxMessageIds uses (confirmed working).
+            // The 'or' array syntax with imapflow was failing silently.
+            // Trade-off: Scans more messages but guarantees results.
+            const searchCriteria = {
+                deleted: false
+            };
+
+            console.log(`📧 [IMAP] Search Criteria (Broad): ${JSON.stringify(searchCriteria)}`);
+
+            // Fetch from server - will scan all messages then filter locally
             for await (const message of client.fetch(
-                { not: { keyword: '$bucketed' }, deleted: false },
+                searchCriteria,
                 { envelope: true, uid: true, flags: true }
             ) as AsyncGenerator<ImapMessage>) {
                 totalScanned++;
 
-                // Safety check: Abort if client is disconnected (e.g. during logout)
+                // Safety check: Abort if client is disconnected
                 if (!client || !client.usable) {
                     console.log('📧 [IMAP] Client disconnected during sync. Aborting.');
                     break;
                 }
 
-                // Skip archived emails
+                // LOCAL FILTER: Skip bucketed emails
+                if (message.flags && message.flags.has('$bucketed')) {
+                    continue;
+                }
+
+                // LOCAL FILTER: Skip archived emails
                 if (message.flags && message.flags.has('$archived')) {
                     archivedSkipped++;
                     continue;
@@ -199,6 +212,13 @@ export const imapService = {
                 if (message.envelope) {
                     const emailDate = message.envelope.date ? new Date(message.envelope.date) : null;
                     const isStarred = message.flags && message.flags.has('\\Flagged');
+
+                    // STRICT VALIDATION: Skip emails with missing Message-ID or Sender
+                    // This prevents "Zombie" emails (Unknown/Unknown) that cannot be archived or tracked.
+                    if (!message.envelope.messageId || !message.envelope.from || message.envelope.from.length === 0) {
+                        console.warn(`📧 [IMAP] Skipping malformed email (UID: ${message.uid}): Missing Message-ID or Sender.`);
+                        continue;
+                    }
 
                     // Include if: (date >= cutoffDate) OR (starred AND importStarred enabled)
                     if ((emailDate && emailDate >= cutoffDate) || (isStarred && includeStarred)) {

@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
     try {
         console.log('📬 [INBOX] Request received');
 
-        // 1. Serve from DB immediately (Instant Load)
+        // 1. Try to serve from DB immediately (Instant Load)
         const dbResult = await db.query(`
             SELECT * FROM email_metadata 
             WHERE original_bucket IS NULL 
@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
             ORDER BY date DESC
         `);
 
-        const dbEmails = (dbResult.rows || []).map((row: any) => ({
+        let dbEmails = (dbResult.rows || []).map((row: any) => ({
             uid: row.uid,
             messageId: row.message_id,
             subject: row.subject,
@@ -41,12 +41,42 @@ router.get('/', async (req, res) => {
             dueDate: row.due_date
         }));
 
-        console.log(`📬 [INBOX] Returning ${dbEmails.length} emails from DB cache`);
-        res.json(dbEmails);
+        // 2. If cache is empty AND IMAP is configured, fetch on-demand (like bucket routes)
+        if (dbEmails.length === 0 && configService.isConfigured()) {
+            console.log('📬 [INBOX] Cache empty, fetching from IMAP...');
+            try {
+                await imapService.fetchTriageEmails();
 
-        // NOTE: Background sync on every request disabled to reduce IMAP lock contention.
-        // The 5-minute sync worker (syncWorker.ts) handles syncing instead.
-        // This allows body fetches to proceed without waiting for 14k email scans.
+                // Re-query DB after sync
+                const refreshedResult = await db.query(`
+                    SELECT * FROM email_metadata 
+                    WHERE original_bucket IS NULL 
+                    AND date_archived IS NULL
+                    AND date IS NOT NULL
+                    AND date > '2000-01-01'
+                    ORDER BY date DESC
+                `);
+
+                dbEmails = (refreshedResult.rows || []).map((row: any) => ({
+                    uid: row.uid,
+                    messageId: row.message_id,
+                    subject: row.subject,
+                    from: [{ name: row.sender, address: row.sender_address }],
+                    date: row.date,
+                    preview: row.preview,
+                    notes: row.notes,
+                    dueDate: row.due_date
+                }));
+                console.log(`📬 [INBOX] On-demand fetch complete: ${dbEmails.length} emails`);
+            } catch (imapErr) {
+                console.error('📬 [INBOX] On-demand fetch failed:', imapErr);
+                // Continue with empty cache - sync worker will catch up
+            }
+        } else {
+            console.log(`📬 [INBOX] Returning ${dbEmails.length} emails from DB cache`);
+        }
+
+        res.json(dbEmails);
 
     } catch (err) {
         console.error('Error fetching inbox:', err);

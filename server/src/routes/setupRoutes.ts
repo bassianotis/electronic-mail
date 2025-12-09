@@ -160,21 +160,33 @@ router.post('/save', async (req, res) => {
             });
         }
 
-        // Auto-discover existing buckets from IMAP flags
-        console.log('🔍 Starting bucket auto-discovery after setup...');
-        try {
-            const { imapService } = await import('../services/imapService');
-            const discoveryResult = await imapService.discoverAndCreateBuckets();
-            console.log(`📊 Discovery complete: ${discoveryResult.created} buckets created from ${discoveryResult.discovered} flags`);
-        } catch (error: any) {
-            console.error('⚠️  Bucket auto-discovery failed (non-critical):', error.message);
-            // Don't fail the entire setup if discovery fails
-        }
-
+        // Return success immediately so frontend can show confirmation screen
         res.json({
             success: true,
             message: 'Configuration saved and IMAP connected successfully'
         });
+
+        // Run bucket discovery and data sync in background
+        // This happens WHILE user is viewing the confirmation screen
+        (async () => {
+            console.log('🔍 Starting background bucket discovery...');
+            try {
+                const { imapService } = await import('../services/imapService');
+                const discoveryResult = await imapService.discoverAndCreateBuckets();
+                console.log(`📊 Discovery complete: ${discoveryResult.created} buckets created`);
+            } catch (error: any) {
+                console.error('⚠️ Bucket discovery failed:', error.message);
+            }
+
+            console.log('🚀 Starting background data preload...');
+            try {
+                const { syncAllBuckets } = await import('../services/syncWorker');
+                await syncAllBuckets();
+                console.log('✅ Background preload complete - data ready!');
+            } catch (e) {
+                console.error('⚠️ Preload failed:', e);
+            }
+        })();
     } catch (error: any) {
         console.error('Error saving configuration:', error);
         res.status(500).json({

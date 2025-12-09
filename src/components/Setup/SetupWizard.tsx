@@ -126,14 +126,13 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                 setError('Please create a web access password');
                 return;
             }
-            setStep(4);
-        }
-    };
 
-    const handleFinalSave = async () => {
-        setValidating(true);
-        try {
-            const saveResponse = await fetch('/api/setup/save', {
+            // Fire the save API immediately (fire-and-forget) so sync starts NOW
+            // User will see "All Set!" while sync runs in background
+            setStep(4);
+
+            // Trigger save in background - don't await, let it run while user reads confirmation
+            fetch('/api/setup/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -147,18 +146,13 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                     importStarred: formData.importStarred,
                     webPassword: formData.webPassword
                 })
+            }).then(res => res.json()).then(data => {
+                if (!data.success) {
+                    console.error('Background save failed:', data.error);
+                }
+            }).catch(err => {
+                console.error('Background save error:', err);
             });
-
-            const saveData = await saveResponse.json();
-            if (saveData.success) {
-                onComplete();
-            } else {
-                setError('Failed to save configuration: ' + saveData.error);
-            }
-        } catch (err: any) {
-            setError('Error saving settings: ' + err.message);
-        } finally {
-            setValidating(false);
         }
     };
 
@@ -611,8 +605,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                             )}
 
                             <button
-                                onClick={handleFinalSave}
-                                disabled={validating}
+                                onClick={onComplete}
                                 style={{
                                     width: '100%',
                                     padding: '12px',
@@ -622,22 +615,14 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                                     borderRadius: '8px',
                                     fontSize: '14px',
                                     fontWeight: 600,
-                                    cursor: validating ? 'wait' : 'pointer',
+                                    cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '8px',
-                                    opacity: validating ? 0.7 : 1
+                                    gap: '8px'
                                 }}
                             >
-                                {validating ? (
-                                    <>
-                                        <Loader className="animate-spin" size={16} />
-                                        Connecting...
-                                    </>
-                                ) : (
-                                    'Go to Inbox'
-                                )}
+                                Go to Inbox
                             </button>
                         </motion.div>
                     )}

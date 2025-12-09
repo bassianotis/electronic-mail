@@ -101,6 +101,19 @@ export async function syncAllBuckets(): Promise<void> {
         const bucketsResult = await db.query('SELECT id FROM buckets');
         const buckets = bucketsResult.rows || [];
 
+        // 1. Sync inbox emails (Prioritized for UX)
+        console.log('  🔄 Syncing inbox emails (Priority)...');
+        try {
+            await imapService.fetchTriageEmails();
+            console.log('  ✓ Inbox sync complete');
+        } catch (err) {
+            console.error('  ✗ Inbox sync failed:', err);
+        }
+
+        // 2. Reconcile inbox with IMAP (detect external changes)
+        await reconcileWithImap();
+
+        // 3. Sync all buckets
         for (const bucket of buckets) {
             try {
                 console.log(`  Syncing bucket: ${bucket.id}`);
@@ -140,17 +153,7 @@ export async function syncAllBuckets(): Promise<void> {
             }
         }
 
-        // Sync inbox emails (fetch new emails from IMAP)
-        console.log('  🔄 Syncing inbox emails...');
-        try {
-            await imapService.fetchTriageEmails();
-            console.log('  ✓ Inbox sync complete');
-        } catch (err) {
-            console.error('  ✗ Inbox sync failed:', err);
-        }
 
-        // Reconcile inbox with IMAP (detect external changes)
-        await reconcileWithImap();
 
         console.log('🔄 Bucket sync complete');
     } catch (err) {
@@ -171,10 +174,10 @@ export function startSyncWorker(): void {
 
     console.log(`🔄 Starting sync worker (interval: ${SYNC_INTERVAL / 1000}s)`);
 
-    // Run initial sync after a longer delay (give UI time to load first)
+    // Run initial sync immediately (short delay for connection stability)
     setTimeout(() => {
         syncAllBuckets();
-    }, 10000);  // 10 seconds instead of 5
+    }, 1000);  // 1 second - quick start
 
     // Schedule periodic syncs
     syncInterval = setInterval(() => {
