@@ -5,6 +5,7 @@ import { EmailCard } from './EmailCard';
 import { useMail } from '../../context/MailContext';
 import { mapApiResponsesToEmails } from '../../utils/emailMapper';
 import { useBackgroundPreviews } from '../../hooks';
+import type { ThreadGroup } from '../../../shared/types/email';
 
 interface BucketGalleryProps {
     bucket: Bucket;
@@ -13,9 +14,22 @@ interface BucketGalleryProps {
 
 type GroupBy = 'none' | 'sender';
 
+// Extended email with thread info
+interface EmailWithThread extends Email {
+    threadId?: string;
+    threadCount?: number;
+}
+
 export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEmail }) => {
-    const { bucketEmail, emails: globalEmails, archiveEmail, loadEmailBody, setCurrentView } = useMail();
-    const [bucketEmails, setBucketEmails] = React.useState<Email[]>([]);
+    const {
+        bucketEmail,
+        emails: globalEmails,
+        archiveEmail,
+        loadEmailBody,
+        setCurrentView,
+        fetchBucketThreads
+    } = useMail();
+    const [bucketEmails, setBucketEmails] = React.useState<EmailWithThread[]>([]);
     const [groupBy, setGroupBy] = React.useState<GroupBy>('none');
     const [showGroupMenu, setShowGroupMenu] = React.useState(false);
 
@@ -24,45 +38,118 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         setCurrentView('bucket');
     }, [setCurrentView]);
 
-    const handleBucketEmail = (emailId: string, targetBucketId: string) => {
+    const handleBucketEmail = async (emailId: string, targetBucketId: string) => {
+        console.log(`[BucketGallery] handleBucketEmail called with emailId=${emailId}, targetBucketId=${targetBucketId}`);
         if (targetBucketId === bucket.id) return;
 
+        // Find the email to get its threadId if it's a thread
+        const email = bucketEmails.find(e => e.id === emailId);
+        console.log(`[BucketGallery] Found email:`, email ? { id: email.id, threadId: email.threadId, threadCount: email.threadCount } : 'not found');
+
         if (targetBucketId === 'archive') {
-            // Archive the email
-            archiveEmail(emailId, bucket.id);
+            // If this is a thread, archive the entire thread
+            if (email?.threadId) {
+                console.log(`[BucketGallery] Archiving entire thread ${email.threadId}`);
+                // Optimistic update first
+                setBucketEmails(prev => prev.filter(e => e.id !== emailId));
+                try {
+                    const response = await fetch(`/api/threads/${encodeURIComponent(email.threadId)}/archive`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (!response.ok) {
+                        console.error('[BucketGallery] Failed to archive thread:', await response.text());
+                    }
+                } catch (err) {
+                    console.error('[BucketGallery] Error archiving thread:', err);
+                }
+            } else {
+                // Single email
+                archiveEmail(emailId, bucket.id);
+                setBucketEmails(prev => prev.filter(e => e.id !== emailId));
+            }
+        } else if (targetBucketId === 'inbox') {
+            // Move back to inbox (unbucket)
+            // If this is a thread, unbucket the entire thread
+            if (email?.threadId) {
+                console.log(`[BucketGallery] Unbucketing entire thread ${email.threadId}`);
+                try {
+                    const response = await fetch(`/api/threads/${encodeURIComponent(email.threadId)}/unbucket`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (!response.ok) {
+                        console.error('[BucketGallery] Failed to unbucket thread:', await response.text());
+                    }
+                } catch (err) {
+                    console.error('[BucketGallery] Error unbucketing thread:', err);
+                }
+            } else {
+                // Single email, use regular bucket email
+                bucketEmail(emailId, 'inbox');
+            }
             setBucketEmails(prev => prev.filter(e => e.id !== emailId));
         } else {
-            // Move to another bucket
             bucketEmail(emailId, targetBucketId);
             setBucketEmails(prev => prev.filter(e => e.id !== emailId));
         }
     };
 
-    // Fetch emails for this bucket from the API
+    // Fetch threads for this bucket and convert to emails with thread info
     React.useEffect(() => {
-        const fetchBucketEmails = async () => {
+        const fetchBucketData = async () => {
             try {
+                // Try to fetch threads first
+                if (fetchBucketThreads) {
+                    const threads: ThreadGroup[] = await fetchBucketThreads(bucket.id);
+                    console.log(`[BucketGallery] Fetched ${threads?.length || 0} threads for bucket ${bucket.id}`, threads);
+
+                    if (threads && threads.length > 0) {
+                        // Convert threads to emails with thread count
+                        const emailsWithThreads: EmailWithThread[] = threads.map(thread => {
+                            const latest = thread.latestEmail;
+                            console.log(`[BucketGallery] Thread ${thread.threadId.substring(0, 20)}... count=${thread.count}`);
+                            return {
+                                id: latest.messageId || thread.threadId,
+                                uid: latest.uid?.toString(),
+                                messageId: latest.messageId,
+                                sender: latest.sender,
+                                senderAddress: latest.senderAddress,
+                                subject: latest.subject,
+                                preview: latest.preview || '',
+                                body: '<p>Loading...</p>',
+                                date: new Date(latest.date),
+                                read: true,
+                                bucketId: bucket.id,
+                                threadId: thread.threadId,
+                                threadCount: thread.count
+                            };
+                        });
+                        setBucketEmails(emailsWithThreads);
+                        return;
+                    }
+                }
+
+                // Fallback to regular email fetch
                 const res = await fetch(`/api/bucket/${bucket.id}`);
                 if (res.ok) {
                     const data: ApiEmailResponse[] = await res.json();
                     const mappedEmails = mapApiResponsesToEmails(data, { bucketId: bucket.id });
-                    setBucketEmails(mappedEmails);
+                    setBucketEmails(mappedEmails as EmailWithThread[]);
                 }
             } catch (err) {
-                console.error('Error loading bucket emails:', err);
+                console.error('Error loading bucket data:', err);
             }
         };
 
-        fetchBucketEmails();
-    }, [bucket.id]);
+        fetchBucketData();
+    }, [bucket.id, fetchBucketThreads]);
 
-    // Sync with global emails state for metadata updates (notes, due dates, body, preview)  
+    // Sync with global emails state for metadata updates
     React.useEffect(() => {
         setBucketEmails(prev => prev.map(bucketEmail => {
-            // Find matching email in global state by ID
             const globalEmail = globalEmails.find(e => e.id === bucketEmail.id);
             if (globalEmail) {
-                // Update metadata, body, and preview from global state
                 return {
                     ...bucketEmail,
                     note: globalEmail.note,
@@ -75,7 +162,7 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         }));
     }, [globalEmails]);
 
-    // Listen for archived emails and remove them from bucket view
+    // Listen for events
     React.useEffect(() => {
         const handleArchive = (e: any) => {
             if (e.detail && e.detail.emailId) {
@@ -113,7 +200,6 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
             }
         };
 
-        // Create custom event listeners
         window.addEventListener('emailArchived', handleArchive);
         window.addEventListener('emailBodyLoaded', handleBodyLoaded);
         window.addEventListener('emailUpdated', handleEmailUpdated);
@@ -125,13 +211,13 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         };
     }, []);
 
-    // Background preview loading for bucket emails
+    // Background preview loading
     useBackgroundPreviews(bucketEmails, { loadEmailBody });
 
     // Group emails by sender
     const groupedEmails = React.useMemo(() => {
         if (groupBy === 'sender') {
-            const groups = new Map<string, Email[]>();
+            const groups = new Map<string, EmailWithThread[]>();
 
             bucketEmails.forEach(email => {
                 const sender = email.sender;
@@ -141,12 +227,10 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                 groups.get(sender)!.push(email);
             });
 
-            // Sort each group chronologically (newest first)
             groups.forEach((emails, sender) => {
                 groups.set(sender, emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
             });
 
-            // Convert to array and sort by sender name alphabetically
             return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
         }
         return null;
@@ -178,6 +262,7 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                                     email={email}
                                     onClick={() => onSelectEmail(email)}
                                     onBucket={handleBucketEmail}
+                                    threadCount={email.threadCount}
                                 />
                             ))}
                         </div>
@@ -200,6 +285,7 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                         email={email}
                         onClick={() => onSelectEmail(email)}
                         onBucket={handleBucketEmail}
+                        threadCount={email.threadCount}
                     />
                 ))}
             </div>
@@ -219,7 +305,7 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                         {bucket.label}
                     </h2>
                     <p className="text-muted">
-                        {bucketEmails.length} items
+                        {bucketEmails.length} {bucketEmails.length === 1 ? 'thread' : 'threads'}
                     </p>
                 </div>
 

@@ -2,6 +2,7 @@ import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { configService } from './configService';
 import { db } from './dbService';
+import { normalizeSubject, computeThreadId } from './threadService';
 
 const createClient = () => {
     const imapConfig = configService.getImapConfig();
@@ -117,6 +118,7 @@ interface ImapMessage {
     envelope: ImapEnvelope;
     flags: Set<string>;
     source?: Buffer;
+    headers?: Map<string, string[]>;
 }
 
 interface EmailAttachment {
@@ -186,9 +188,10 @@ export const imapService = {
             console.log(`📧 [IMAP] Search Criteria (Broad): ${JSON.stringify(searchCriteria)}`);
 
             // Fetch from server - will scan all messages then filter locally
+            // Include headers for threading
             for await (const message of client.fetch(
                 searchCriteria,
-                { envelope: true, uid: true, flags: true }
+                { envelope: true, uid: true, flags: true, headers: ['references', 'in-reply-to'] }
             ) as AsyncGenerator<ImapMessage>) {
                 totalScanned++;
 
@@ -235,25 +238,90 @@ export const imapService = {
                         const senderName = message.envelope.from?.[0]?.name || message.envelope.from?.[0]?.address || 'Unknown';
                         const senderAddress = message.envelope.from?.[0]?.address || '';
 
-                        // Fire and forget DB update
-                        db.query(`
-                            INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, snippet, uid)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(message_id) DO UPDATE SET
-                                subject = excluded.subject,
-                                sender = excluded.sender,
-                                sender_address = excluded.sender_address,
-                                date = excluded.date,
-                                uid = excluded.uid
-                        `, [
-                            message.envelope.messageId,
-                            message.envelope.subject || '(No Subject)',
-                            senderName,
-                            senderAddress,
-                            message.envelope.date?.toISOString() || new Date().toISOString(),
-                            '', // Snippet not available in envelope fetch, requires body fetch
-                            message.uid
-                        ]).then(() => { savedToDb++; }).catch(err => console.error('📧 [IMAP] Error persisting email to DB:', err));
+                        // Extract threading headers - handle different formats from ImapFlow
+                        let inReplyTo: string | null = null;
+                        let references: string | null = null;
+
+                        if (message.headers) {
+                            // ImapFlow can return headers as Map, object, or parsed headers
+                            if (message.headers instanceof Map) {
+                                inReplyTo = message.headers.get('in-reply-to')?.[0] || null;
+                                references = message.headers.get('references')?.[0] || null;
+                            } else if (typeof message.headers === 'object') {
+                                // Headers might be an object with arrays
+                                const hdrs = message.headers as any;
+                                inReplyTo = hdrs['in-reply-to']?.[0] || hdrs.inReplyTo?.[0] || null;
+                                references = hdrs['references']?.[0] || hdrs.references?.[0] || null;
+                            }
+                        }
+
+                        const normalizedSubj = normalizeSubject(message.envelope.subject || '');
+
+                        // Fire and forget DB update with threading columns
+                        (async () => {
+                            try {
+                                // Compute thread_id
+                                const threadId = await computeThreadId(
+                                    message.envelope.messageId,
+                                    inReplyTo,
+                                    references,
+                                    normalizedSubj
+                                );
+
+                                await db.query(`
+                                    INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, snippet, uid, thread_id, in_reply_to, "references", normalized_subject, mailbox)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INBOX')
+                                    ON CONFLICT(message_id) DO UPDATE SET
+                                        subject = excluded.subject,
+                                        sender = excluded.sender,
+                                        sender_address = excluded.sender_address,
+                                        date = excluded.date,
+                                        uid = excluded.uid,
+                                        thread_id = COALESCE(email_metadata.thread_id, excluded.thread_id),
+                                        in_reply_to = excluded.in_reply_to,
+                                        "references" = excluded."references",
+                                        normalized_subject = excluded.normalized_subject,
+                                        mailbox = COALESCE(email_metadata.mailbox, excluded.mailbox)
+                                `, [
+                                    message.envelope.messageId,
+                                    message.envelope.subject || '(No Subject)',
+                                    senderName,
+                                    senderAddress,
+                                    message.envelope.date?.toISOString() || new Date().toISOString(),
+                                    '', // Snippet not available in envelope fetch
+                                    message.uid,
+                                    threadId,
+                                    inReplyTo,
+                                    references,
+                                    normalizedSubj
+                                ]);
+                                savedToDb++;
+
+                                // Thread Resurrection: Check if this email's thread has archived emails
+                                // If so, unarchive the entire thread (emails move together)
+                                const archivedInThread = await db.query(
+                                    `SELECT COUNT(*) as count FROM email_metadata 
+                                     WHERE COALESCE(thread_id, message_id) = ? 
+                                     AND date_archived IS NOT NULL AND date_archived != ''`,
+                                    [threadId]
+                                );
+
+                                if (archivedInThread.rows && archivedInThread.rows[0]?.count > 0) {
+                                    console.log(`📧 [THREAD] Resurrecting archived thread: ${threadId.substring(0, 30)}...`);
+                                    // Unarchive all emails in this thread (clear date_archived but keep original_bucket)
+                                    await db.query(
+                                        `UPDATE email_metadata 
+                                         SET date_archived = NULL
+                                         WHERE COALESCE(thread_id, message_id) = ?
+                                         AND (mailbox IS NULL OR mailbox != 'Sent')`,
+                                        [threadId]
+                                    );
+                                    console.log(`📧 [THREAD] Thread resurrected, ${archivedInThread.rows[0].count} emails unarchived`);
+                                }
+                            } catch (err) {
+                                console.error('📧 [IMAP] Error persisting email to DB:', err);
+                            }
+                        })();
                     } else {
                         dateFilteredOut++;
                     }
@@ -647,26 +715,66 @@ export const imapService = {
             await client.mailboxCreate('Archives');
         }
 
-        const lock = await client.getMailboxLock('INBOX');
+        // Check if email is ALREADY in Archives folder
         try {
-            await client.mailboxOpen('INBOX');
-
-            // Search for email by Message-ID
-            const searchResult = await client.search({ header: { 'message-id': messageId } });
-            if (!searchResult || searchResult.length === 0) {
-                throw new Error(`Email with Message-ID ${messageId} not found`);
+            const archiveLock = await client.getMailboxLock('Archives');
+            try {
+                await client.mailboxOpen('Archives');
+                const archiveSearch = await client.search({ header: { 'message-id': messageId } });
+                if (archiveSearch && archiveSearch.length > 0) {
+                    console.log(`[archiveEmail] Email ${messageId} already in Archives, skipping`);
+                    return; // Already archived, nothing to do
+                }
+            } finally {
+                archiveLock.release();
             }
-            const seqNum = searchResult[0];
+        } catch (err) {
+            console.log(`[archiveEmail] Could not check Archives folder: ${err}`);
+        }
 
-            // Add $archived tag first
-            await client.messageFlagsAdd(seqNum, ['$archived']);
+        // List of folders to search, in order of priority
+        const foldersToSearch = ['INBOX'];
 
-            // Move to Archives folder (this will remove from INBOX)
-            console.log(`Moving email ${messageId} to Archives folder...`);
-            await client.messageMove(seqNum, 'Archives');
-            console.log(`Email ${messageId} archived successfully`);
-        } finally {
-            lock.release();
+        // Add bucket label folders - Gmail uses labels like "$label1", "$label2", etc.
+        // We'll try common patterns
+        const labelPatterns = ['$label1', '$label2', '$label3', '$label4', '$label5'];
+        foldersToSearch.push(...labelPatterns);
+
+        let foundInFolder: string | null = null;
+        let seqNum: number | null = null;
+
+        // Search each folder until we find the email
+        for (const folder of foldersToSearch) {
+            try {
+                const lock = await client.getMailboxLock(folder);
+                try {
+                    await client.mailboxOpen(folder);
+                    const searchResult = await client.search({ header: { 'message-id': messageId } });
+                    if (searchResult && searchResult.length > 0) {
+                        foundInFolder = folder;
+                        seqNum = searchResult[0];
+                        console.log(`[archiveEmail] Found email ${messageId} in folder ${folder}`);
+
+                        // Add $archived tag
+                        await client.messageFlagsAdd(seqNum, ['$archived']);
+
+                        // Move to Archives folder
+                        console.log(`Moving email ${messageId} from ${folder} to Archives folder...`);
+                        await client.messageMove(seqNum, 'Archives');
+                        console.log(`Email ${messageId} archived successfully from ${folder}`);
+                        break;
+                    }
+                } finally {
+                    lock.release();
+                }
+            } catch (err) {
+                // Folder doesn't exist or other error, continue to next
+                console.log(`[archiveEmail] Could not search folder ${folder}: ${err}`);
+            }
+        }
+
+        if (!foundInFolder) {
+            throw new Error(`Email with Message-ID ${messageId} not found in any folder`);
         }
     },
 
@@ -931,7 +1039,149 @@ export const imapService = {
         }
     },
 
-    // 10. Disconnect IMAP
+    // 10. Fetch Sent Emails - Sync sent folder for threading
+    fetchSentEmails: async () => {
+        await ensureConnection();
+
+        // Try common sent folder names
+        const sentFolderNames = ['Sent', 'INBOX.Sent', 'Sent Items', 'Sent Messages', '[Gmail]/Sent Mail'];
+        let sentFolder: string | null = null;
+
+        for (const folderName of sentFolderNames) {
+            try {
+                await client.mailboxOpen(folderName, { readOnly: true });
+                sentFolder = folderName;
+                await client.mailboxClose();
+                console.log(`📤 [IMAP] Found Sent folder: ${folderName}`);
+                break;
+            } catch (err) {
+                // Try next folder name
+            }
+        }
+
+        if (!sentFolder) {
+            console.log('📤 [IMAP] Could not find Sent folder');
+            return [];
+        }
+
+        const lock = await client.getMailboxLock(sentFolder);
+        try {
+            const messages: EmailSummary[] = [];
+            const syncSettings = configService.getSyncSettings();
+            const cutoffDate = syncSettings.startDate ? new Date(syncSettings.startDate) : new Date('2025-11-30');
+
+            let totalScanned = 0;
+            let savedToDb = 0;
+
+            // Fetch sent emails with threading headers
+            for await (const message of client.fetch(
+                { deleted: false },
+                { envelope: true, uid: true, flags: true, headers: ['references', 'in-reply-to'] }
+            ) as AsyncGenerator<ImapMessage>) {
+                totalScanned++;
+
+                if (!client || !client.usable) {
+                    console.log('📤 [IMAP] Client disconnected during sent sync. Aborting.');
+                    break;
+                }
+
+                if (message.envelope) {
+                    const emailDate = message.envelope.date ? new Date(message.envelope.date) : null;
+
+                    // Skip emails before cutoff
+                    if (!emailDate || emailDate < cutoffDate) {
+                        continue;
+                    }
+
+                    // Skip if no message ID
+                    if (!message.envelope.messageId) {
+                        continue;
+                    }
+
+                    const emailData = {
+                        uid: message.uid,
+                        messageId: message.envelope.messageId,
+                        subject: message.envelope.subject,
+                        from: message.envelope.from,
+                        date: message.envelope.date
+                    };
+                    messages.push(emailData);
+
+                    // Get recipient info (To field for sent emails)
+                    const toAddresses = message.envelope.to || [];
+                    const recipientName = toAddresses[0]?.name || toAddresses[0]?.address || 'Unknown';
+                    const recipientAddress = toAddresses[0]?.address || '';
+
+                    // Extract threading headers - handle different formats from ImapFlow
+                    let inReplyTo: string | null = null;
+                    let references: string | null = null;
+
+                    if (message.headers) {
+                        if (message.headers instanceof Map) {
+                            inReplyTo = message.headers.get('in-reply-to')?.[0] || null;
+                            references = message.headers.get('references')?.[0] || null;
+                        } else if (typeof message.headers === 'object') {
+                            const hdrs = message.headers as any;
+                            inReplyTo = hdrs['in-reply-to']?.[0] || hdrs.inReplyTo?.[0] || null;
+                            references = hdrs['references']?.[0] || hdrs.references?.[0] || null;
+                        }
+                    }
+
+                    const normalizedSubj = normalizeSubject(message.envelope.subject || '');
+
+                    // Persist sent email to DB
+                    (async () => {
+                        try {
+                            const threadId = await computeThreadId(
+                                message.envelope.messageId,
+                                inReplyTo,
+                                references,
+                                normalizedSubj
+                            );
+
+                            await db.query(`
+                                INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, snippet, uid, thread_id, in_reply_to, "references", normalized_subject, mailbox)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Sent')
+                                ON CONFLICT(message_id) DO UPDATE SET
+                                    subject = excluded.subject,
+                                    sender = excluded.sender,
+                                    sender_address = excluded.sender_address,
+                                    date = excluded.date,
+                                    uid = excluded.uid,
+                                    thread_id = COALESCE(email_metadata.thread_id, excluded.thread_id),
+                                    in_reply_to = excluded.in_reply_to,
+                                    "references" = excluded."references",
+                                    normalized_subject = excluded.normalized_subject,
+                                    mailbox = 'Sent'
+                            `, [
+                                message.envelope.messageId,
+                                message.envelope.subject || '(No Subject)',
+                                recipientName,  // For sent emails, show recipient
+                                recipientAddress,
+                                message.envelope.date?.toISOString() || new Date().toISOString(),
+                                '',
+                                message.uid,
+                                threadId,
+                                inReplyTo,
+                                references,
+                                normalizedSubj
+                            ]);
+                            savedToDb++;
+                        } catch (err) {
+                            console.error('📤 [IMAP] Error persisting sent email to DB:', err);
+                        }
+                    })();
+                }
+            }
+
+            console.log(`📤 [IMAP] Sent sync complete: ${totalScanned} scanned, ${messages.length} after cutoff, ${savedToDb} saved`);
+            return messages;
+        } finally {
+            lock.release();
+        }
+    },
+
+    // 11. Disconnect IMAP
     disconnectImap: async (): Promise<void> => {
         if (client) {
             console.log('Disconnecting IMAP client...');

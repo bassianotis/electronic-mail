@@ -35,6 +35,14 @@ export interface Email {
     dateArchived?: string;
     /** The ID of the bucket this email belonged to before archiving */
     originalBucket?: string;
+    /** Thread ID for grouping related emails */
+    threadId?: string;
+    /** Message-ID of the email this replies to */
+    inReplyTo?: string;
+    /** Subject with Re:/Fwd: stripped for matching */
+    normalizedSubject?: string;
+    /** Which mailbox this email is in (INBOX, Sent, Drafts, Archives) */
+    mailbox?: string;
 }
 
 /**
@@ -75,4 +83,40 @@ export interface ApiEmailResponse {
 export interface ArchivedEmail extends Email {
     dateArchived?: string;
     originalBucket?: string;
+}
+
+/**
+ * Thread group for displaying related emails as a single unit
+ */
+export interface ThreadGroup {
+    /** Unique thread identifier */
+    threadId: string;
+    /** All emails in this thread */
+    emails: Email[];
+    /** Most recent email (used for display in collapsed view) */
+    latestEmail: Email;
+    /** Total number of emails in thread (received + sent) */
+    count: number;
+    /** Number of received emails only */
+    receivedCount: number;
+    /** Shared bucket ID (all received emails in thread share same bucket) */
+    bucketId: string | null;
+    /** True if thread resurfaced in inbox due to new email */
+    hasNewEmail: boolean;
+    /** Original bucket ID for "Return to [Bucket]" action */
+    originalBucketId?: string;
+}
+
+/**
+ * API response for ThreadGroup before client-side date parsing
+ */
+export interface ApiThreadGroupResponse {
+    threadId: string;
+    emails: ApiEmailResponse[];
+    latestEmail: ApiEmailResponse;
+    count: number;
+    receivedCount: number;
+    bucketId: string | null;
+    hasNewEmail: boolean;
+    originalBucketId?: string;
 }

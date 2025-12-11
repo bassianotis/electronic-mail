@@ -203,7 +203,8 @@ export const EmailOverlay: React.FC<EmailOverlayProps> = ({ email: propEmail, on
         if (!email) return;
 
         // Load body if needed
-        if ((email.body === '<p>Loading body...</p>' || !email.body) && !localBody) {
+        const needsBody = email.body === '<p>Loading body...</p>' || email.body === '<p>Loading...</p>' || !email.body;
+        if (needsBody && !localBody) {
             loadEmailBody(email.id, email.uid).then(data => {
                 if (data && data.html) {
                     setLocalBody(data.html);

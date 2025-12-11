@@ -6,14 +6,21 @@ import { useMail } from '../../context/MailContext';
 import { useDragDrop } from '../../context/DragDropContext';
 import { mapApiResponsesToArchivedEmails } from '../../utils/emailMapper';
 import { useBackgroundPreviews } from '../../hooks';
+import type { ThreadGroup } from '../../../shared/types/email';
+
+// Extended type to include thread info
+interface ArchivedEmailWithThread extends ArchivedEmail {
+    threadId?: string;
+    threadCount?: number;
+}
 
 interface ArchiveViewProps {
     onSelectEmail: (email: Email) => void;
 }
 
 export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
-    const { buckets, unarchiveEmail, loadEmailBody, setCurrentView } = useMail();
-    const [archivedEmails, setArchivedEmails] = useState<ArchivedEmail[]>([]);
+    const { buckets, unarchiveEmail, loadEmailBody, setCurrentView, fetchArchiveThreads } = useMail();
+    const [archivedEmails, setArchivedEmails] = useState<ArchivedEmailWithThread[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [lastRestored, setLastRestored] = useState<{ email: Email; target: string } | null>(null);
 
@@ -48,12 +55,60 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
         const fetchArchive = async () => {
             setIsLoading(true);
             try {
+                let emailsWithThreads: ArchivedEmailWithThread[] = [];
+
+                // Try fetching threads first
+                if (fetchArchiveThreads) {
+                    const threads: ThreadGroup[] = await fetchArchiveThreads();
+                    console.log(`[ArchiveView] Fetched ${threads.length} archive threads`);
+
+                    if (threads && threads.length > 0) {
+                        // Convert threads to archived emails with thread info
+                        emailsWithThreads = threads.map(thread => {
+                            const latest = thread.latestEmail;
+                            return {
+                                id: latest.messageId || thread.threadId,
+                                uid: (latest as any).uid?.toString(),
+                                messageId: latest.messageId,
+                                sender: latest.sender || 'Unknown',
+                                senderAddress: latest.senderAddress || '',
+                                subject: latest.subject || '(No Subject)',
+                                preview: latest.preview || '',
+                                body: '<p>Loading...</p>',
+                                date: new Date(latest.date),
+                                read: true,
+                                dateArchived: new Date().toISOString() as any,
+                                originalBucket: thread.originalBucketId,
+                                threadId: thread.threadId,
+                                threadCount: thread.count
+                            };
+                        });
+
+                        // When we have threads, use ONLY threads (don't fetch individual emails)
+                        // Sort by date descending
+                        emailsWithThreads.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                        setArchivedEmails(emailsWithThreads);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+
+                // Fallback: Only fetch individual emails if no threads returned
                 const res = await fetch('/api/archive');
                 if (res.ok) {
                     const data: ApiEmailResponse[] = await res.json();
                     const mappedEmails = mapApiResponsesToArchivedEmails(data);
-                    setArchivedEmails(mappedEmails);
+                    console.log(`[ArchiveView] Fallback: Fetched ${mappedEmails.length} individual archived emails`);
+
+                    emailsWithThreads = mappedEmails.map(email => ({
+                        ...email,
+                        threadCount: 1
+                    }));
                 }
+
+                // Sort by date descending
+                emailsWithThreads.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                setArchivedEmails(emailsWithThreads);
             } catch (err) {
                 console.error('Error loading archive:', err);
             } finally {
@@ -62,7 +117,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
         };
 
         fetchArchive();
-    }, []);
+    }, [fetchArchiveThreads]);
 
     // Background preview loading for archived emails
     useBackgroundPreviews(archivedEmails, { loadEmailBody });
@@ -138,9 +193,28 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
                                 key={email.id}
                                 email={email}
                                 onClick={() => onSelectEmail(email)}
-                                onUnarchive={(email, targetLocation) => {
-                                    unarchiveEmail(email, targetLocation);
+                                onUnarchive={async (email, targetLocation) => {
+                                    // Cast to get thread info - Archive items may have threadId and threadCount
+                                    const emailWithThread = email as any;
+
+                                    // Optimistic update - remove from UI immediately
                                     setArchivedEmails(prev => prev.filter(e => e.id !== email.id));
+
+                                    // If this is a thread (threadCount > 1), use thread unarchive API
+                                    if (emailWithThread.threadId && emailWithThread.threadCount && emailWithThread.threadCount > 1) {
+                                        console.log(`[ArchiveView] Unarchiving thread ${emailWithThread.threadId} to ${targetLocation}`);
+                                        fetch(`/api/threads/${encodeURIComponent(emailWithThread.threadId)}/unarchive`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ targetLocation })
+                                        }).catch(err => {
+                                            console.error('[ArchiveView] Error unarchiving thread:', err);
+                                            // TODO: Rollback by re-adding email to state
+                                        });
+                                    } else {
+                                        // Single email - use existing unarchive
+                                        unarchiveEmail(email, targetLocation);
+                                    }
                                 }}
                                 getBucketLabel={getBucketLabel}
                             />
@@ -215,7 +289,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
 };
 
 interface ArchiveItemProps {
-    email: ArchivedEmail;
+    email: ArchivedEmailWithThread;
     onClick: () => void;
     onUnarchive: (email: Email, targetLocation: string) => void;
     getBucketLabel: (bucketId?: string) => string;
@@ -328,6 +402,8 @@ const ArchiveItem: React.FC<ArchiveItemProps> = ({ email, onClick, onUnarchive, 
         }
     };
 
+    const hasStack = email.threadCount && email.threadCount > 1;
+
     return (
         <motion.div
             layoutId={`email-${email.id}`}
@@ -347,87 +423,146 @@ const ArchiveItem: React.FC<ArchiveItemProps> = ({ email, onClick, onUnarchive, 
                 cursor: 'grabbing'
             }}
             onClick={handleClick}
-            whileHover={{ y: -2, boxShadow: 'var(--shadow-sm)' }}
+            whileHover={{ y: -2, boxShadow: '0 6px 16px rgba(0,0,0,0.1)' }}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, height: 0 }}
             style={{
+                position: 'relative',
+                cursor: 'grab',
+                isolation: 'isolate'
+            }}
+        >
+            {/* Stacked card effect for threads */}
+            {hasStack && (
+                <>
+                    {email.threadCount! > 2 && (
+                        <div
+                            style={{
+                                position: 'absolute',
+                                top: '4px',
+                                left: '6px',
+                                right: '-6px',
+                                bottom: '-4px',
+                                backgroundColor: '#ebebeb',
+                                borderRadius: '12px',
+                                border: '1px solid #d5d5d5',
+                                transform: 'rotate(-1deg)',
+                                zIndex: 1
+                            }}
+                        />
+                    )}
+                    <div
+                        style={{
+                            position: 'absolute',
+                            top: '2px',
+                            left: '4px',
+                            right: '-4px',
+                            bottom: '-2px',
+                            backgroundColor: '#f5f5f5',
+                            borderRadius: '12px',
+                            border: '1px solid #e0e0e0',
+                            transform: 'rotate(1deg)',
+                            zIndex: 2
+                        }}
+                    />
+                </>
+            )}
+
+            {/* Main card content */}
+            <div style={{
                 backgroundColor: '#fff',
                 border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)',
+                borderRadius: '12px',
                 padding: 'var(--space-lg)',
-                cursor: 'grab',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 'var(--space-sm)',
-                position: 'relative'
+                position: 'relative',
+                zIndex: 3
             }}
-        >
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: '4px' }}>
-                        <span
-                            style={{
-                                fontWeight: 600,
-                                color: 'var(--color-text-main)',
-                                cursor: email.senderAddress ? 'pointer' : 'default'
-                            }}
-                            onClick={(e) => {
-                                if (email.senderAddress) {
-                                    e.stopPropagation();
-                                    setShowSenderEmail(!showSenderEmail);
-                                }
-                            }}
-                        >
-                            {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
-                        </span>
-                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                            •
-                        </span>
-                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                            from {getBucketLabel(email.originalBucket)}
+            >
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: '4px' }}>
+                            <span
+                                style={{
+                                    fontWeight: 600,
+                                    color: 'var(--color-text-main)',
+                                    cursor: email.senderAddress ? 'pointer' : 'default'
+                                }}
+                                onClick={(e) => {
+                                    if (email.senderAddress) {
+                                        e.stopPropagation();
+                                        setShowSenderEmail(!showSenderEmail);
+                                    }
+                                }}
+                            >
+                                {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
+                            </span>
+                            {email.threadCount && email.threadCount > 1 && (
+                                <span style={{
+                                    backgroundColor: '#3b82f6',
+                                    color: '#fff',
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    padding: '2px 6px',
+                                    borderRadius: '10px',
+                                    minWidth: '18px',
+                                    textAlign: 'center',
+                                    display: 'inline-block'
+                                }}>
+                                    {email.threadCount}
+                                </span>
+                            )}
+                            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                                •
+                            </span>
+                            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                                from {getBucketLabel(email.originalBucket)}
+                            </span>
+                        </div>
+                        <h3 style={{
+                            fontSize: 'var(--font-size-md)',
+                            fontWeight: 600,
+                            color: 'var(--color-text-main)',
+                            margin: '4px 0'
+                        }}>
+                            {email.subject}
+                        </h3>
+                    </div>
+                    <div style={{ textAlign: 'right', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', minWidth: '120px' }}>
+                        {email.dateArchived && (
+                            <div>Archived {new Date(email.dateArchived).toLocaleDateString()}</div>
+                        )}
+                        <div>Received {email.date.toLocaleDateString()}</div>
+                    </div>
+                </div>
+
+                {email.note && (
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '6px',
+                        backgroundColor: '#fff9db',
+                        color: '#e67e22',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: 600
+                    }}>
+                        <Edit3 size={10} style={{ marginTop: '2px', flexShrink: 0 }} />
+                        <span style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden'
+                        }}>
+                            {email.note}
                         </span>
                     </div>
-                    <h3 style={{
-                        fontSize: 'var(--font-size-md)',
-                        fontWeight: 600,
-                        color: 'var(--color-text-main)',
-                        margin: '4px 0'
-                    }}>
-                        {email.subject}
-                    </h3>
-                </div>
-                <div style={{ textAlign: 'right', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', minWidth: '120px' }}>
-                    {email.dateArchived && (
-                        <div>Archived {new Date(email.dateArchived).toLocaleDateString()}</div>
-                    )}
-                    <div>Received {email.date.toLocaleDateString()}</div>
-                </div>
+                )}
             </div>
-
-            {email.note && (
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '6px',
-                    backgroundColor: '#fff9db',
-                    color: '#e67e22',
-                    padding: '6px 8px',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    fontWeight: 600
-                }}>
-                    <Edit3 size={10} style={{ marginTop: '2px', flexShrink: 0 }} />
-                    <span style={{
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                    }}>
-                        {email.note}
-                    </span>
-                </div>
-            )}
         </motion.div>
     );
 };

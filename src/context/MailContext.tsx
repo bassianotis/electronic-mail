@@ -1,12 +1,14 @@
 /**
  * MailContext
- * Composes useEmails, useBuckets, and useRules hooks into a unified context
+ * Composes useEmails, useBuckets, useRules, and useThreads hooks into a unified context
  */
 import React, { createContext, useState, useEffect, type ReactNode } from 'react';
 import { type Email, type Bucket, type Rule } from '../store/mailStore';
+import type { ThreadGroup } from '../../shared/types/email';
 import { useEmails } from '../hooks/useEmails';
 import { useBuckets } from '../hooks/useBuckets';
 import { useRules } from '../hooks/useRules';
+import { useThreads } from '../hooks/useThreads';
 
 interface MailContextType {
     emails: Email[];
@@ -29,6 +31,16 @@ interface MailContextType {
     setCurrentView: (view: 'inbox' | 'bucket' | 'archive') => void;
     currentView: 'inbox' | 'bucket' | 'archive';
     refreshData: () => Promise<void>;
+    // Thread operations
+    threads: ThreadGroup[];
+    threadsLoading: boolean;
+    fetchInboxThreads: () => Promise<ThreadGroup[]>;
+    fetchBucketThreads: (bucketId: string) => Promise<ThreadGroup[]>;
+    fetchArchiveThreads: () => Promise<ThreadGroup[]>;
+    bucketThread: (threadId: string, bucketId: string) => Promise<boolean>;
+    returnThreadToBucket: (threadId: string) => Promise<boolean>;
+    archiveThread: (threadId: string) => Promise<boolean>;
+    syncSentEmails: () => Promise<number>;
 }
 
 const MailContext = createContext<MailContextType | undefined>(undefined);
@@ -40,6 +52,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const emailsHook = useEmails();
     const bucketsHook = useBuckets();
     const rulesHook = useRules();
+    const threadsHook = useThreads();
 
     // Initial data fetch
     const fetchData = async () => {
@@ -144,7 +157,17 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             deleteRule: rulesHook.deleteRule,
             refreshData: fetchData,
             setCurrentView,
-            currentView
+            currentView,
+            // Thread operations
+            threads: threadsHook.threads,
+            threadsLoading: threadsHook.isLoading,
+            fetchInboxThreads: threadsHook.fetchInboxThreads,
+            fetchBucketThreads: threadsHook.fetchBucketThreads,
+            fetchArchiveThreads: threadsHook.fetchArchiveThreads,
+            bucketThread: threadsHook.bucketThread,
+            returnThreadToBucket: threadsHook.returnThreadToBucket,
+            archiveThread: threadsHook.archiveThread,
+            syncSentEmails: threadsHook.syncSentEmails
         }}>
             {children}
         </MailContext.Provider>

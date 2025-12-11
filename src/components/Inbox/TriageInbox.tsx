@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { InboxItem } from './InboxItem';
+import { ThreadItem } from './ThreadItem';
 import { type Email } from '../../store/mailStore';
-import { CheckCircle, ArrowRight } from 'lucide-react';
+import type { ThreadGroup } from '../../../shared/types/email';
+import { CheckCircle, ArrowRight, Layers } from 'lucide-react';
 import { isToday, isYesterday, subDays, isAfter } from 'date-fns';
 import { useMail } from '../../context/MailContext';
 
@@ -11,14 +13,38 @@ interface TriageInboxProps {
 }
 
 export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
-    const { emails, bucketEmail, archiveEmail, buckets, setCurrentView, isLoading, isSyncing } = useMail();
+    const {
+        emails,
+        bucketEmail,
+        archiveEmail,
+        buckets,
+        setCurrentView,
+        isLoading,
+        isSyncing,
+        // Thread operations
+        threads,
+        threadsLoading,
+        fetchInboxThreads,
+        bucketThread,
+        archiveThread,
+        returnThreadToBucket
+    } = useMail();
+
     const [lastBucketed, setLastBucketed] = useState<{ email: Email; bucketId: string } | null>(null);
     const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
+    const [useThreadView, setUseThreadView] = useState(true); // Toggle for thread view
 
     // Set current view to inbox when this component mounts
-    React.useEffect(() => {
+    useEffect(() => {
         setCurrentView('inbox');
     }, [setCurrentView]);
+
+    // Fetch threads when component mounts or when switching to thread view
+    useEffect(() => {
+        if (useThreadView) {
+            fetchInboxThreads();
+        }
+    }, [useThreadView, fetchInboxThreads]);
 
     // Filter for Inbox (items without a bucketId) and sort by date descending
     const inboxEmails = emails.filter(e => !e.bucketId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -39,45 +65,114 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
         }, 4000);
     };
 
+    const handleThreadBucket = async (threadId: string, bucketId: string) => {
+        await bucketThread(threadId, bucketId);
+        // Refresh threads after bucketing
+        fetchInboxThreads();
+    };
+
+    const handleThreadArchive = async (threadId: string) => {
+        // Optimistic update - archiveThread already removes from local state
+        archiveThread(threadId);
+        // Backend call happens async, no await needed for UI
+    };
+
+    const handleThreadReturn = async (threadId: string) => {
+        await returnThreadToBucket(threadId);
+        // Refresh threads after returning
+        fetchInboxThreads();
+    };
+
     const handleDone = (emailId: string) => {
         archiveEmail(emailId);
     };
 
     const handleToggleExpand = (email: Email) => {
         setExpandedEmailId(prev => prev === email.id ? null : email.id);
-        // We can still call onSelectEmail if the parent needs to know, but for now we handle expansion locally
-        // onSelectEmail(email); 
     };
 
-    // Segmentation Logic
+    const handleThreadClick = (thread: ThreadGroup) => {
+        // For now, open the latest email in the thread
+        // In the future, this will open the thread view
+        if (thread.latestEmail) {
+            const email: Email = {
+                id: thread.latestEmail.messageId || thread.threadId,
+                uid: thread.latestEmail.uid?.toString(),
+                sender: thread.latestEmail.sender,
+                subject: thread.latestEmail.subject,
+                preview: thread.latestEmail.preview,
+                body: '<p>Loading body...</p>',
+                date: new Date(thread.latestEmail.date),
+                read: true
+            };
+            onSelectEmail(email);
+        }
+    };
+
+    // Segmentation Logic for threads
     const today = new Date();
     const lastWeekStart = subDays(today, 7);
     const twoWeeksAgoStart = subDays(today, 14);
 
-    const segments = {
-        today: [] as Email[],
-        yesterday: [] as Email[],
-        pastWeek: [] as Email[],
-        lastWeek: [] as Email[],
-        earlier: [] as Email[]
+    const segmentThreads = (threadList: ThreadGroup[]) => {
+        const segments = {
+            today: [] as ThreadGroup[],
+            yesterday: [] as ThreadGroup[],
+            pastWeek: [] as ThreadGroup[],
+            lastWeek: [] as ThreadGroup[],
+            earlier: [] as ThreadGroup[]
+        };
+
+        threadList.forEach(thread => {
+            const date = new Date(thread.latestEmail.date);
+            if (isToday(date)) {
+                segments.today.push(thread);
+            } else if (isYesterday(date)) {
+                segments.yesterday.push(thread);
+            } else if (isAfter(date, lastWeekStart)) {
+                segments.pastWeek.push(thread);
+            } else if (isAfter(date, twoWeeksAgoStart)) {
+                segments.lastWeek.push(thread);
+            } else {
+                segments.earlier.push(thread);
+            }
+        });
+
+        return segments;
     };
 
-    inboxEmails.forEach(email => {
-        const date = email.date;
-        if (isToday(date)) {
-            segments.today.push(email);
-        } else if (isYesterday(date)) {
-            segments.yesterday.push(email);
-        } else if (isAfter(date, lastWeekStart)) {
-            segments.pastWeek.push(email);
-        } else if (isAfter(date, twoWeeksAgoStart)) {
-            segments.lastWeek.push(email);
-        } else {
-            segments.earlier.push(email);
-        }
-    });
+    // Segmentation Logic for emails (legacy)
+    const segmentEmails = (emailList: Email[]) => {
+        const segments = {
+            today: [] as Email[],
+            yesterday: [] as Email[],
+            pastWeek: [] as Email[],
+            lastWeek: [] as Email[],
+            earlier: [] as Email[]
+        };
 
-    const renderSection = (title: string, items: Email[]) => {
+        emailList.forEach(email => {
+            const date = email.date;
+            if (isToday(date)) {
+                segments.today.push(email);
+            } else if (isYesterday(date)) {
+                segments.yesterday.push(email);
+            } else if (isAfter(date, lastWeekStart)) {
+                segments.pastWeek.push(email);
+            } else if (isAfter(date, twoWeeksAgoStart)) {
+                segments.lastWeek.push(email);
+            } else {
+                segments.earlier.push(email);
+            }
+        });
+
+        return segments;
+    };
+
+    const emailSegments = segmentEmails(inboxEmails);
+    const threadSegments = segmentThreads(threads);
+
+    const renderEmailSection = (title: string, items: Email[]) => {
         if (items.length === 0) return null;
         return (
             <section>
@@ -106,6 +201,38 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
         );
     };
 
+    const renderThreadSection = (title: string, items: ThreadGroup[]) => {
+        if (items.length === 0) return null;
+        return (
+            <section>
+                <h3 className="text-muted" style={{
+                    fontSize: 'var(--font-size-sm)',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    marginBottom: 'var(--space-md)'
+                }}>
+                    {title}
+                </h3>
+                <AnimatePresence mode="popLayout">
+                    {items.map((thread) => (
+                        <ThreadItem
+                            key={thread.threadId}
+                            thread={thread}
+                            onBucket={handleThreadBucket}
+                            onArchive={handleThreadArchive}
+                            onReturnToBucket={thread.hasNewEmail ? handleThreadReturn : undefined}
+                            onClick={() => handleThreadClick(thread)}
+                        />
+                    ))}
+                </AnimatePresence>
+            </section>
+        );
+    };
+
+    const itemCount = useThreadView ? threads.length : inboxEmails.length;
+    const loading = useThreadView ? threadsLoading : isLoading;
+
     return (
         <div style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-xl)', paddingBottom: '140px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
@@ -116,20 +243,55 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
                 }}>
                     Inbox
                 </h2>
-                <span className="text-muted" style={{ fontWeight: 500 }}>
-                    {inboxEmails.length} items
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                    {/* Thread view toggle */}
+                    <button
+                        onClick={() => setUseThreadView(!useThreadView)}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            borderRadius: 'var(--radius-full)',
+                            backgroundColor: useThreadView ? 'var(--color-primary)' : 'var(--color-bg-subtle)',
+                            color: useThreadView ? '#fff' : 'var(--color-text-muted)',
+                            fontSize: 'var(--font-size-sm)',
+                            fontWeight: 500,
+                            border: useThreadView ? 'none' : '1px solid var(--color-border)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        <Layers size={14} />
+                        Threads
+                    </button>
+                    <span className="text-muted" style={{ fontWeight: 500 }}>
+                        {itemCount} {useThreadView ? 'threads' : 'items'}
+                    </span>
+                </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-                {renderSection('Today', segments.today)}
-                {renderSection('Yesterday', segments.yesterday)}
-                {renderSection('Past Week', segments.pastWeek)}
-                {renderSection('Last Week', segments.lastWeek)}
-                {renderSection('Earlier', segments.earlier)}
+                {useThreadView ? (
+                    <>
+                        {renderThreadSection('Today', threadSegments.today)}
+                        {renderThreadSection('Yesterday', threadSegments.yesterday)}
+                        {renderThreadSection('Past Week', threadSegments.pastWeek)}
+                        {renderThreadSection('Last Week', threadSegments.lastWeek)}
+                        {renderThreadSection('Earlier', threadSegments.earlier)}
+                    </>
+                ) : (
+                    <>
+                        {renderEmailSection('Today', emailSegments.today)}
+                        {renderEmailSection('Yesterday', emailSegments.yesterday)}
+                        {renderEmailSection('Past Week', emailSegments.pastWeek)}
+                        {renderEmailSection('Last Week', emailSegments.lastWeek)}
+                        {renderEmailSection('Earlier', emailSegments.earlier)}
+                    </>
+                )}
 
                 {/* Loading / Empty States */}
-                {inboxEmails.length === 0 && (
+                {itemCount === 0 && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -143,7 +305,7 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
                             gap: '16px'
                         }}
                     >
-                        {isLoading ? (
+                        {loading ? (
                             <>
                                 <motion.div
                                     animate={{ rotate: 360 }}

@@ -10,13 +10,21 @@ interface EmailCardProps {
     email: Email;
     onClick: () => void;
     onBucket: (emailId: string, bucketId: string) => void;
+    threadCount?: number; // Optional thread count badge
 }
 
-export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }) => {
+export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket, threadCount }) => {
     const { setHoveredBucketId, setIsDragging } = useDragDrop();
     const { buckets } = useMail();
     const isDraggingRef = React.useRef(false);
     const [showSenderEmail, setShowSenderEmail] = React.useState(false);
+
+    // Debug thread count
+    React.useEffect(() => {
+        if (threadCount && threadCount > 1) {
+            console.log(`[EmailCard] Rendering with threadCount=${threadCount} for ${email.subject?.substring(0, 30)}`);
+        }
+    }, [threadCount, email.subject]);
 
     const handleDragStart = () => {
         isDraggingRef.current = true;
@@ -155,7 +163,10 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }
         }
     };
 
-    return (
+    const hasStack = threadCount && threadCount > 1;
+
+    // The main card content
+    const cardContent = (
         <motion.div
             layoutId={`email-${email.id}`}
             drag
@@ -174,10 +185,10 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }
                 cursor: 'grabbing'
             }}
             onClick={handleClick}
-            whileHover={{ y: -4, boxShadow: 'var(--shadow-md)' }}
+            whileHover={{ y: -4, boxShadow: '0 8px 20px rgba(0,0,0,0.12)' }}
             style={{
                 backgroundColor: '#fff',
-                borderRadius: 'var(--radius-md)',
+                borderRadius: '12px',
                 padding: 'var(--space-lg)',
                 border: '1px solid var(--color-border)',
                 cursor: 'grab',
@@ -185,21 +196,39 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }
                 flexDirection: 'column',
                 gap: 'var(--space-sm)',
                 height: '100%',
-                position: 'relative' // Needed for z-index during drag
+                position: 'relative',
+                zIndex: 3
             }}
         >
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
-                <span
-                    style={{ cursor: email.senderAddress ? 'pointer' : 'default' }}
-                    onClick={(e) => {
-                        if (email.senderAddress) {
-                            e.stopPropagation();
-                            setShowSenderEmail(!showSenderEmail);
-                        }
-                    }}
-                >
-                    {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
-                </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+                    <span
+                        style={{ cursor: email.senderAddress ? 'pointer' : 'default' }}
+                        onClick={(e) => {
+                            if (email.senderAddress) {
+                                e.stopPropagation();
+                                setShowSenderEmail(!showSenderEmail);
+                            }
+                        }}
+                    >
+                        {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
+                    </span>
+                    {threadCount && threadCount > 1 && (
+                        <span style={{
+                            backgroundColor: '#3b82f6',
+                            color: '#fff',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            minWidth: '18px',
+                            textAlign: 'center',
+                            display: 'inline-block'
+                        }}>
+                            {threadCount}
+                        </span>
+                    )}
+                </div>
                 <span>{email.date.toLocaleDateString()}</span>
             </div>
 
@@ -270,4 +299,106 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }
             )}
         </motion.div>
     );
+
+    // If it's a thread with multiple emails, we need to create a draggable container with stack inside
+    if (hasStack) {
+        return (
+            <motion.div
+                layoutId={`email-stack-${email.id}`}
+                drag
+                dragSnapToOrigin
+                dragElastic={0.1}
+                dragMomentum={false}
+                onDragStart={handleDragStart}
+                onDrag={handleDrag}
+                onDragEnd={handleDragEnd}
+                whileDrag={{
+                    scale: 0.6,
+                    opacity: 0.9,
+                    zIndex: 300,
+                    boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+                    cursor: 'grabbing'
+                }}
+                onClick={handleClick}
+                whileHover={{ y: -4, boxShadow: '0 8px 20px rgba(0,0,0,0.12)' }}
+                style={{
+                    position: 'relative',
+                    height: '100%',
+                    cursor: 'grab',
+                    isolation: 'isolate'
+                }}
+            >
+                {/* Background stacked cards - inside the drag container */}
+                <div style={{
+                    position: 'absolute',
+                    top: 4,
+                    left: 6,
+                    right: -4,
+                    bottom: -4,
+                    backgroundColor: '#f5f5f5',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '12px',
+                    transform: 'rotate(1.5deg)',
+                    zIndex: 1
+                }} />
+                {threadCount > 2 && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 6,
+                        left: 4,
+                        right: -2,
+                        bottom: -6,
+                        backgroundColor: '#ebebeb',
+                        border: '1px solid #d5d5d5',
+                        borderRadius: '12px',
+                        transform: 'rotate(-1deg)',
+                        zIndex: 0
+                    }} />
+                )}
+                {/* Main card content */}
+                <div
+                    style={{
+                        backgroundColor: '#fff',
+                        borderRadius: '12px',
+                        padding: 'var(--space-lg)',
+                        border: '1px solid var(--color-border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 'var(--space-sm)',
+                        height: '100%',
+                        position: 'relative',
+                        zIndex: 3
+                    }}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+                            <span>{email.sender}</span>
+                            <span style={{
+                                backgroundColor: '#3b82f6',
+                                color: '#fff',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                padding: '2px 6px',
+                                borderRadius: '10px',
+                                minWidth: '18px',
+                                textAlign: 'center',
+                                display: 'inline-block'
+                            }}>
+                                {threadCount}
+                            </span>
+                        </div>
+                        <span>{email.date.toLocaleDateString()}</span>
+                    </div>
+                    <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 600, color: 'var(--color-text-main)', lineHeight: 1.3 }}>
+                        {email.subject}
+                    </h3>
+                    <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {email.preview}
+                    </p>
+                </div>
+            </motion.div>
+        );
+    }
+
+    return cardContent;
 };
