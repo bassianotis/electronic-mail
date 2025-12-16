@@ -1,13 +1,13 @@
 /**
- * ThreadViewWithComposer - Side-by-side email + composition view
+ * ThreadViewWithComposer - Multi-column email thread + composition view
  * 
- * Displays the email thread on the left and composition panel on the right.
- * For multi-email threads, allows horizontal scrolling through past emails.
- * Overlays the bucket gallery similar to EmailOverlay.
+ * Displays all emails in the thread as horizontally scrollable columns on the left,
+ * with the composition panel on the right.
+ * Features a draggable scroll bar at the top for navigating through thread emails.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { Email } from '../../store/mailStore';
 import { CompositionPanel, type DraftEmail } from './CompositionPanel';
 import { useMail } from '../../context/MailContext';
@@ -16,7 +16,7 @@ import { sanitizeHtml } from '../../utils/sanitize';
 
 interface ThreadEmail {
     messageId: string;
-    uid?: number;
+    uid?: string;
     subject: string;
     sender: string;
     senderAddress?: string;
@@ -43,52 +43,72 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
     const { loadEmailBody } = useMail();
     const [threadEmails, setThreadEmails] = useState<ThreadEmail[]>([]);
     const [isLoadingThread, setIsLoadingThread] = useState(true);
-    const [currentEmailIndex, setCurrentEmailIndex] = useState(0);
     const [emailBodies, setEmailBodies] = useState<Map<string, string>>(new Map());
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const threadScrollRef = useRef<HTMLDivElement>(null);
+    const scrollBarRef = useRef<HTMLDivElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [scrollProgress, setScrollProgress] = useState(0);
 
-    // Fetch all emails in the thread
+    // Initialize with the replyToEmail data immediately (fallback if thread API fails)
     useEffect(() => {
+        // Create a ThreadEmail from the replyToEmail
+        const initialEmail: ThreadEmail = {
+            messageId: replyToEmail.messageId || replyToEmail.id,
+            uid: replyToEmail.uid,
+            subject: replyToEmail.subject,
+            sender: replyToEmail.sender,
+            senderAddress: replyToEmail.senderAddress,
+            date: replyToEmail.date?.toISOString() || new Date().toISOString(),
+            bodyHtml: replyToEmail.body,
+            mailbox: replyToEmail.bucketId ? 'INBOX' : undefined
+        };
+
+        // Set initial state with the reply email
+        setThreadEmails([initialEmail]);
+        setIsLoadingThread(false);
+
+        // Pre-populate the body if available
+        if (replyToEmail.body && replyToEmail.body !== '<p>Loading body...</p>') {
+            setEmailBodies(new Map([[initialEmail.messageId, replyToEmail.body]]));
+        }
+
+        // Optionally try to fetch the full thread for multi-email threads
         const fetchThreadEmails = async () => {
-            setIsLoadingThread(true);
             try {
                 const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/emails`, {
                     credentials: 'include'
                 });
                 if (response.ok) {
                     const data = await response.json();
-                    setThreadEmails(data.emails || []);
-                    // Set current email to the one being replied to
-                    const replyIndex = data.emails.findIndex(
-                        (e: ThreadEmail) => e.messageId === replyToEmail.messageId || e.messageId === replyToEmail.id
-                    );
-                    setCurrentEmailIndex(replyIndex >= 0 ? replyIndex : data.emails.length - 1);
+                    if (data.emails && data.emails.length > 0) {
+                        setThreadEmails(data.emails);
+                        // Pre-populate any bodies that came with the response
+                        const newBodies = new Map(emailBodies);
+                        data.emails.forEach((email: ThreadEmail) => {
+                            if (email.bodyHtml) {
+                                newBodies.set(email.messageId, email.bodyHtml);
+                            }
+                        });
+                        setEmailBodies(newBodies);
+                    }
                 }
             } catch (err) {
-                console.error('Error fetching thread emails:', err);
-            } finally {
-                setIsLoadingThread(false);
+                // Thread API failed - that's okay, we already have the initial email
+                console.log('Thread API not available, using single email view');
             }
         };
 
         fetchThreadEmails();
-    }, [threadId, replyToEmail.messageId, replyToEmail.id]);
+    }, [threadId, replyToEmail]);
 
-    // Load email body for visible emails
+    // Load email bodies for all visible emails
     useEffect(() => {
-        const loadVisibleBodies = async () => {
-            // Load current email and neighbors
-            const indicesToLoad = [currentEmailIndex - 1, currentEmailIndex, currentEmailIndex + 1]
-                .filter(i => i >= 0 && i < threadEmails.length);
-
-            for (const idx of indicesToLoad) {
-                const email = threadEmails[idx];
-                if (email && !emailBodies.has(email.messageId)) {
+        const loadAllBodies = async () => {
+            for (const email of threadEmails) {
+                if (!emailBodies.has(email.messageId)) {
                     if (email.bodyHtml) {
-                        // Already have body from thread fetch
                         setEmailBodies(prev => new Map(prev).set(email.messageId, email.bodyHtml!));
-                    } else {
-                        // Need to fetch body
+                    } else if (email.uid) {
                         try {
                             const body = await loadEmailBody(email.messageId, email.uid?.toString());
                             if (body?.html) {
@@ -103,20 +123,63 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
         };
 
         if (threadEmails.length > 0) {
-            loadVisibleBodies();
+            loadAllBodies();
         }
-    }, [threadEmails, currentEmailIndex, emailBodies, loadEmailBody]);
+    }, [threadEmails, emailBodies, loadEmailBody]);
+
+    // Handle scroll synchronization
+    const handleThreadScroll = () => {
+        if (threadScrollRef.current && !isDragging) {
+            const { scrollLeft, scrollWidth, clientWidth } = threadScrollRef.current;
+            const maxScroll = scrollWidth - clientWidth;
+            setScrollProgress(maxScroll > 0 ? scrollLeft / maxScroll : 0);
+        }
+    };
+
+    // Handle scroll bar drag
+    const handleScrollBarMouseDown = (e: React.MouseEvent) => {
+        setIsDragging(true);
+        handleScrollBarDrag(e);
+    };
+
+    const handleScrollBarDrag = (e: React.MouseEvent | MouseEvent) => {
+        if (scrollBarRef.current && threadScrollRef.current) {
+            const rect = scrollBarRef.current.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const progress = Math.max(0, Math.min(1, x / rect.width));
+            setScrollProgress(progress);
+
+            const { scrollWidth, clientWidth } = threadScrollRef.current;
+            const maxScroll = scrollWidth - clientWidth;
+            threadScrollRef.current.scrollLeft = progress * maxScroll;
+        }
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (isDragging) {
+                handleScrollBarDrag(e);
+            }
+        };
+        const handleMouseUp = () => {
+            setIsDragging(false);
+        };
+
+        if (isDragging) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDragging]);
 
     const handleSend = async (draft: DraftEmail) => {
-        // For now, just log and show success (stub implementation)
         console.log('Sending email:', draft);
-
-        // Simulate send delay
         await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Show toast or notification would go here
         alert('Email sent! (This is a stub - email was not actually sent)');
-
         if (onSent) {
             onSent(draft);
         }
@@ -127,21 +190,8 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
         onClose();
     };
 
-    const handlePrevEmail = () => {
-        if (currentEmailIndex > 0) {
-            setCurrentEmailIndex(prev => prev - 1);
-        }
-    };
-
-    const handleNextEmail = () => {
-        if (currentEmailIndex < threadEmails.length - 1) {
-            setCurrentEmailIndex(prev => prev + 1);
-        }
-    };
-
-    const currentEmail = threadEmails[currentEmailIndex];
-    const currentBody = currentEmail ? emailBodies.get(currentEmail.messageId) : null;
     const isSingleEmail = threadEmails.length <= 1;
+    const showScrollBar = threadEmails.length > 1;
 
     return (
         <AnimatePresence>
@@ -184,7 +234,7 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
                     style={{
                         position: 'relative',
                         width: '95%',
-                        maxWidth: '1400px',
+                        maxWidth: '1600px',
                         height: '90vh',
                         display: 'flex',
                         gap: 'var(--space-lg)',
@@ -192,11 +242,11 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
                         pointerEvents: 'auto'
                     }}
                 >
-                    {/* Email View Panel */}
+                    {/* Thread Emails Panel - Horizontally Scrollable */}
                     <motion.div
                         layout
                         style={{
-                            flex: isSingleEmail ? 1.2 : 1,
+                            flex: isSingleEmail ? 1.2 : 1.5,
                             height: '100%',
                             backgroundColor: '#fff',
                             borderRadius: 'var(--radius-lg)',
@@ -206,110 +256,72 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
                             flexDirection: 'column'
                         }}
                     >
-                        {/* Email Header */}
+                        {/* Thread Header with Scroll Bar */}
                         <div style={{
                             padding: 'var(--space-md) var(--space-lg)',
                             borderBottom: '1px solid var(--color-border)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
                             backgroundColor: 'var(--color-bg-subtle)'
                         }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <h2 style={{
-                                    fontSize: 'var(--font-size-lg)',
-                                    fontWeight: 700,
-                                    color: 'var(--color-text-main)',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
-                                }}>
-                                    {currentEmail?.subject || replyToEmail.subject}
-                                </h2>
-                                <div style={{
-                                    fontSize: 'var(--font-size-sm)',
-                                    color: 'var(--color-text-muted)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 'var(--space-sm)'
-                                }}>
-                                    <span style={{ fontWeight: 600 }}>
-                                        {currentEmail?.sender || replyToEmail.sender}
-                                    </span>
-                                    <span>•</span>
-                                    <span>
-                                        {currentEmail?.date
-                                            ? new Date(currentEmail.date).toLocaleString()
-                                            : replyToEmail.date?.toLocaleString()
-                                        }
-                                    </span>
-                                    {currentEmail?.mailbox === 'Sent' && (
-                                        <span style={{
-                                            backgroundColor: 'var(--color-accent-primary)',
-                                            color: '#fff',
-                                            fontSize: '11px',
-                                            padding: '2px 6px',
-                                            borderRadius: 'var(--radius-full)',
-                                            fontWeight: 600
-                                        }}>
-                                            Sent
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Thread Navigation */}
-                            {threadEmails.length > 1 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 'var(--space-sm)'
-                                }}>
-                                    <button
-                                        onClick={handlePrevEmail}
-                                        disabled={currentEmailIndex === 0}
-                                        style={{
-                                            padding: 'var(--space-xs)',
-                                            borderRadius: 'var(--radius-sm)',
-                                            color: currentEmailIndex === 0 ? 'var(--color-border)' : 'var(--color-text-muted)',
-                                            cursor: currentEmailIndex === 0 ? 'not-allowed' : 'pointer',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <ChevronLeft size={18} />
-                                    </button>
+                            <h2 style={{
+                                fontSize: 'var(--font-size-lg)',
+                                fontWeight: 700,
+                                color: 'var(--color-text-main)',
+                                marginBottom: showScrollBar ? 'var(--space-md)' : 0
+                            }}>
+                                {replyToEmail.subject}
+                                {threadEmails.length > 1 && (
                                     <span style={{
+                                        marginLeft: 'var(--space-sm)',
                                         fontSize: 'var(--font-size-sm)',
-                                        color: 'var(--color-text-muted)',
-                                        minWidth: '60px',
-                                        textAlign: 'center'
+                                        fontWeight: 500,
+                                        color: 'var(--color-text-muted)'
                                     }}>
-                                        {currentEmailIndex + 1} of {threadEmails.length}
+                                        ({threadEmails.length} emails in thread)
                                     </span>
-                                    <button
-                                        onClick={handleNextEmail}
-                                        disabled={currentEmailIndex >= threadEmails.length - 1}
+                                )}
+                            </h2>
+
+                            {/* Draggable Scroll Bar */}
+                            {showScrollBar && (
+                                <div
+                                    ref={scrollBarRef}
+                                    onMouseDown={handleScrollBarMouseDown}
+                                    style={{
+                                        height: '8px',
+                                        backgroundColor: 'var(--color-border)',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        position: 'relative'
+                                    }}
+                                >
+                                    {/* Scroll Handle */}
+                                    <div
                                         style={{
-                                            padding: 'var(--space-xs)',
-                                            borderRadius: 'var(--radius-sm)',
-                                            color: currentEmailIndex >= threadEmails.length - 1 ? 'var(--color-border)' : 'var(--color-text-muted)',
-                                            cursor: currentEmailIndex >= threadEmails.length - 1 ? 'not-allowed' : 'pointer',
-                                            transition: 'all 0.2s'
+                                            position: 'absolute',
+                                            left: `${scrollProgress * 80}%`,
+                                            width: '20%',
+                                            height: '100%',
+                                            backgroundColor: isDragging ? 'var(--color-accent-secondary)' : 'var(--color-text-muted)',
+                                            borderRadius: '4px',
+                                            transition: isDragging ? 'none' : 'left 0.1s ease',
+                                            cursor: 'grab'
                                         }}
-                                    >
-                                        <ChevronRight size={18} />
-                                    </button>
+                                    />
                                 </div>
                             )}
                         </div>
 
-                        {/* Email Body */}
+                        {/* Email Columns - Horizontally Scrollable */}
                         <div
-                            ref={scrollContainerRef}
+                            ref={threadScrollRef}
+                            onScroll={handleThreadScroll}
                             style={{
                                 flex: 1,
-                                overflowY: 'auto',
-                                padding: 'var(--space-lg)'
+                                display: 'flex',
+                                overflowX: 'auto',
+                                overflowY: 'hidden',
+                                scrollBehavior: 'smooth',
+                                scrollbarWidth: 'thin'
                             }}
                         >
                             {isLoadingThread ? (
@@ -317,34 +329,117 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    height: '100%',
+                                    width: '100%',
                                     color: 'var(--color-text-muted)'
                                 }}>
                                     Loading thread...
                                 </div>
-                            ) : currentBody ? (
-                                <ShadowContainer style={{ minHeight: '200px' }}>
-                                    <div
-                                        className="email-body-content"
-                                        style={{
-                                            fontSize: '16px',
-                                            lineHeight: '1.6',
-                                            color: '#333',
-                                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
-                                        }}
-                                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentBody) }}
-                                    />
-                                </ShadowContainer>
                             ) : (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    height: '100%',
-                                    color: 'var(--color-text-muted)'
-                                }}>
-                                    Loading email body...
-                                </div>
+                                threadEmails.map((email, idx) => {
+                                    const body = emailBodies.get(email.messageId);
+                                    const isNewest = idx === threadEmails.length - 1;
+
+                                    return (
+                                        <div
+                                            key={email.messageId}
+                                            style={{
+                                                minWidth: isSingleEmail ? '100%' : '400px',
+                                                maxWidth: isSingleEmail ? '100%' : '500px',
+                                                height: '100%',
+                                                flexShrink: 0,
+                                                borderRight: idx < threadEmails.length - 1 ? '1px solid var(--color-border)' : 'none',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                backgroundColor: isNewest ? '#fafbfc' : '#fff'
+                                            }}
+                                        >
+                                            {/* Email Header */}
+                                            <div style={{
+                                                padding: 'var(--space-md)',
+                                                borderBottom: '1px solid var(--color-border)',
+                                                backgroundColor: email.mailbox === 'Sent' ? 'rgba(46, 204, 113, 0.05)' : 'transparent'
+                                            }}>
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 'var(--space-sm)',
+                                                    marginBottom: 'var(--space-xs)'
+                                                }}>
+                                                    <span style={{
+                                                        fontWeight: 600,
+                                                        color: 'var(--color-text-main)',
+                                                        fontSize: 'var(--font-size-sm)'
+                                                    }}>
+                                                        {email.sender}
+                                                    </span>
+                                                    {email.mailbox === 'Sent' && (
+                                                        <span style={{
+                                                            backgroundColor: 'var(--color-accent-primary)',
+                                                            color: '#fff',
+                                                            fontSize: '10px',
+                                                            padding: '1px 6px',
+                                                            borderRadius: 'var(--radius-full)',
+                                                            fontWeight: 600
+                                                        }}>
+                                                            Sent
+                                                        </span>
+                                                    )}
+                                                    {isNewest && (
+                                                        <span style={{
+                                                            backgroundColor: 'var(--color-accent-secondary)',
+                                                            color: '#fff',
+                                                            fontSize: '10px',
+                                                            padding: '1px 6px',
+                                                            borderRadius: 'var(--radius-full)',
+                                                            fontWeight: 600
+                                                        }}>
+                                                            Latest
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{
+                                                    fontSize: 'var(--font-size-xs)',
+                                                    color: 'var(--color-text-muted)'
+                                                }}>
+                                                    {new Date(email.date).toLocaleString()}
+                                                </div>
+                                            </div>
+
+                                            {/* Email Body */}
+                                            <div style={{
+                                                flex: 1,
+                                                overflowY: 'auto',
+                                                padding: 'var(--space-md)'
+                                            }}>
+                                                {body ? (
+                                                    <ShadowContainer style={{ minHeight: '100px' }}>
+                                                        <div
+                                                            className="email-body-content"
+                                                            style={{
+                                                                fontSize: '14px',
+                                                                lineHeight: '1.5',
+                                                                color: '#333',
+                                                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+                                                            }}
+                                                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(body) }}
+                                                        />
+                                                    </ShadowContainer>
+                                                ) : (
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        height: '100%',
+                                                        color: 'var(--color-text-muted)',
+                                                        fontSize: 'var(--font-size-sm)'
+                                                    }}>
+                                                        Loading...
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
                             )}
                         </div>
                     </motion.div>
@@ -356,7 +451,8 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
                         transition={{ delay: 0.1, type: 'spring', damping: 25, stiffness: 300 }}
                         style={{
                             flex: 1,
-                            height: '100%'
+                            height: '100%',
+                            minWidth: '400px'
                         }}
                     >
                         <CompositionPanel
@@ -367,7 +463,7 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
                         />
                     </motion.div>
 
-                    {/* Close button (top right of whole container) */}
+                    {/* Close button */}
                     <button
                         onClick={onClose}
                         style={{
@@ -380,7 +476,8 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
                             color: '#fff',
                             cursor: 'pointer',
                             transition: 'all 0.2s',
-                            zIndex: 10
+                            zIndex: 10,
+                            border: 'none'
                         }}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.7)';

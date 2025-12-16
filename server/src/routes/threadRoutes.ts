@@ -148,4 +148,23 @@ router.post('/backfill', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/threads/:threadId/emails
+ * Get all emails in a specific thread with full body content
+ */
+router.get('/:threadId/emails', async (req, res) => {
+    try {
+        const { threadId } = req.params;
+        const emails = await threadService.getThreadEmails(decodeURIComponent(threadId));
+        res.json({
+            emails,
+            count: emails.length
+        });
+    } catch (err) {
+        console.error('[threadRoutes] Error fetching thread emails:', err);
+        res.status(500).json({ error: 'Failed to fetch thread emails' });
+    }
+});
+
 export default router;
+

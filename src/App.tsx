@@ -4,6 +4,7 @@ import { TriageInbox } from './components/Inbox/TriageInbox';
 import { BucketGallery } from './components/Views/BucketGallery';
 import { ArchiveView } from './components/Views/ArchiveView';
 import { EmailOverlay } from './components/Views/EmailOverlay';
+import { ThreadCardView } from './components/Views/ThreadCardView';
 import { SearchOverlay } from './components/Views/SearchOverlay';
 import { SetupWizard } from './components/Setup/SetupWizard';
 import { OnboardingModal } from './components/Modals/OnboardingModal';
@@ -30,33 +31,31 @@ function AppContent() {
     const [activeBucketId, setActiveBucketId] = useState('inbox');
     const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [isConfigured, setIsConfigured] = useState<boolean | null>(null); // null = loading
+    const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
+    const [isNewCompose, setIsNewCompose] = useState(false);
+
     const { buckets, refreshData } = useMail();
 
     // Check if app is configured and authenticated on mount
     useEffect(() => {
         const checkStatus = async () => {
             try {
-                // Check setup status
                 const setupRes = await fetch('/api/setup/status');
                 const setupData = await setupRes.json();
                 setIsConfigured(setupData.configured);
 
                 if (setupData.configured) {
-                    // Check auth status
                     const authRes = await fetch('/api/auth/check');
                     const authData = await authRes.json();
 
-                    // If auth is disabled, consider authenticated
                     if (!authData.enabled) {
                         setIsAuthenticated(true);
                     } else {
                         setIsAuthenticated(authData.authenticated);
                     }
 
-                    // Check if onboarding has been seen
                     const hasSeenOnboarding = localStorage.getItem('mail_onboarding_seen');
                     if (!hasSeenOnboarding && (authData.authenticated || !authData.enabled)) {
                         setShowOnboarding(true);
@@ -76,7 +75,11 @@ function AppContent() {
         localStorage.setItem('mail_onboarding_seen', 'true');
     };
 
-    // Show loading state while checking
+    const handleNewCompose = () => {
+        setSelectedEmail(null);
+        setIsNewCompose(true);
+    };
+
     if (isConfigured === null) {
         return (
             <div style={{
@@ -92,19 +95,15 @@ function AppContent() {
         );
     }
 
-    // Show setup wizard if not configured
     if (!isConfigured) {
         return <SetupWizard onComplete={async () => {
             setIsConfigured(true);
-            setIsAuthenticated(true); // Assume authenticated after setup
-            // Force a data refresh now that we have config
+            setIsAuthenticated(true);
             await refreshData();
-            // Show onboarding after fresh setup
             setShowOnboarding(true);
         }} />;
     }
 
-    // Show login if configured but not authenticated
     if (!isAuthenticated) {
         return <Login onLogin={() => {
             setIsAuthenticated(true);
@@ -114,12 +113,16 @@ function AppContent() {
 
     const activeBucket = buckets.find(b => b.id === activeBucketId) || buckets[0];
 
+    // Determine if selected email is in a bucket (not inbox/archive)
+    const isInBucket = selectedEmail?.bucketId && selectedEmail.bucketId !== 'inbox';
+
     return (
         <>
             <DashboardLayout
                 activeBucket={activeBucketId}
                 onBucketSelect={setActiveBucketId}
                 onSearchClick={() => setIsSearchOpen(true)}
+                onComposeClick={handleNewCompose}
             >
                 {activeBucketId === 'archive' ? (
                     <ArchiveView onSelectEmail={setSelectedEmail} />
@@ -134,7 +137,54 @@ function AppContent() {
                 isOpen={showOnboarding}
                 onClose={handleOnboardingClose}
             />
-            <EmailOverlay email={selectedEmail} onClose={() => setSelectedEmail(null)} />
+
+            {/* Thread Card View - for bucket emails (shows all emails as cards) */}
+            {selectedEmail && isInBucket && (
+                <ThreadCardView
+                    email={selectedEmail}
+                    onClose={() => setSelectedEmail(null)}
+                />
+            )}
+
+            {/* Email Overlay - for inbox/archive emails */}
+            {selectedEmail && !isInBucket && (
+                <EmailOverlay
+                    email={selectedEmail}
+                    onClose={() => setSelectedEmail(null)}
+                />
+            )}
+
+            {/* New Compose Overlay - placeholder */}
+            {isNewCompose && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 300
+                }}>
+                    <div style={{
+                        backgroundColor: '#fff',
+                        borderRadius: '12px',
+                        padding: '24px',
+                        textAlign: 'center'
+                    }}>
+                        <p>New Compose - Coming Soon</p>
+                        <button
+                            onClick={() => setIsNewCompose(false)}
+                            style={{ marginTop: '16px', padding: '8px 16px' }}
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <SearchOverlay
                 isOpen={isSearchOpen}
                 onClose={() => setIsSearchOpen(false)}

@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { Search, Settings } from 'lucide-react';
+import { Search, Settings, PenSquare } from 'lucide-react';
 import { useDragDrop } from '../../context/DragDropContext';
 import { SettingsModal } from '../Rules/SettingsModal';
 
 interface TopNavbarProps {
     onSearchClick: () => void;
     onNavigate: (view: string) => void;
+    onComposeClick?: () => void;
 }
 
-export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate }) => {
+export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate, onComposeClick }) => {
     const { hoveredBucketId } = useDragDrop();
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const isHovered = hoveredBucketId === 'inbox';
@@ -84,26 +85,65 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate 
                 </div>
             </div>
 
-            {/* Settings / Profile */}
-            <button
-                onClick={() => setIsSettingsModalOpen(true)}
-                style={{
-                    padding: 'var(--space-sm)',
-                    color: 'var(--color-text-muted)',
-                    borderRadius: 'var(--radius-full)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    justifySelf: 'end'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-subtle)'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-            >
-                <Settings size={20} />
-            </button>
+            {/* Right Section: Compose + Settings */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-sm)',
+                justifySelf: 'end'
+            }}>
+                {/* Compose Button */}
+                {onComposeClick && (
+                    <button
+                        onClick={onComposeClick}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '8px 14px',
+                            borderRadius: 'var(--radius-full)',
+                            backgroundColor: 'var(--color-accent-secondary)',
+                            border: 'none',
+                            color: '#fff',
+                            fontSize: 'var(--font-size-sm)',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                            e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = 'none';
+                        }}
+                    >
+                        <PenSquare size={16} />
+                        Compose
+                    </button>
+                )}
+
+                {/* Settings Button */}
+                <button
+                    onClick={() => setIsSettingsModalOpen(true)}
+                    style={{
+                        padding: 'var(--space-sm)',
+                        color: 'var(--color-text-muted)',
+                        borderRadius: 'var(--radius-full)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-subtle)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                    <Settings size={20} />
+                </button>
+            </div>
 
             <SettingsModal
                 isOpen={isSettingsModalOpen}

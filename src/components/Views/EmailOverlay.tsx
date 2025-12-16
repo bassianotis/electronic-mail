@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Email } from '../../store/mailStore';
-import { X, Check, Edit3, Clock, RotateCcw, Calendar, BookOpen } from 'lucide-react';
+import { X, Check, Edit3, Clock, RotateCcw, Calendar, BookOpen, Reply } from 'lucide-react';
 import { useMail } from '../../context/MailContext';
 import { extractReaderContent } from '../../utils/emailUtils';
 import { ShadowContainer } from './ShadowContainer';
@@ -11,6 +11,7 @@ import { sanitizeHtml } from '../../utils/sanitize';
 interface EmailOverlayProps {
     email: Email | null;
     onClose: () => void;
+    onReply?: (email: Email) => void;
 }
 
 
@@ -29,7 +30,7 @@ const actionButtonStyle = {
     cursor: 'pointer'
 };
 
-export const EmailOverlay: React.FC<EmailOverlayProps> = ({ email: propEmail, onClose }) => {
+export const EmailOverlay: React.FC<EmailOverlayProps> = ({ email: propEmail, onClose, onReply }) => {
     const { emails, updateEmail, archiveEmail, unarchiveEmail, loadEmailBody, markAsRead, currentView: currentViewFromContext } = useMail();
 
     // Use fresh email from context if available (to get updated UID), otherwise use prop
@@ -578,6 +579,37 @@ export const EmailOverlay: React.FC<EmailOverlayProps> = ({ email: propEmail, on
                                             </div>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                                            {/* Reply button - only shown in bucket views (when email has bucketId) */}
+                                            {onReply && email.bucketId && email.bucketId !== 'inbox' && (
+                                                <button
+                                                    onClick={() => onReply({ ...email, body: localBody || email.body })}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        padding: '8px 16px',
+                                                        borderRadius: 'var(--radius-full)',
+                                                        backgroundColor: 'var(--color-accent-secondary)',
+                                                        border: 'none',
+                                                        color: '#fff',
+                                                        fontSize: 'var(--font-size-sm)',
+                                                        fontWeight: 600,
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                                        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.transform = 'translateY(0)';
+                                                        e.currentTarget.style.boxShadow = 'none';
+                                                    }}
+                                                >
+                                                    <Reply size={16} />
+                                                    Reply
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={onClose}
                                                 style={{

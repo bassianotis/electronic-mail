@@ -7,9 +7,10 @@ interface DashboardLayoutProps {
     activeBucket: string;
     onBucketSelect: (id: string) => void;
     onSearchClick: () => void;
+    onComposeClick?: () => void;
 }
 
-export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activeBucket, onBucketSelect, onSearchClick }) => {
+export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activeBucket, onBucketSelect, onSearchClick, onComposeClick }) => {
     return (
         <div className="dashboard-layout" style={{
             display: 'flex',
@@ -19,7 +20,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
             overflow: 'hidden'
         }}>
             {/* Tier 1: Top Navbar */}
-            <TopNavbar onSearchClick={onSearchClick} onNavigate={onBucketSelect} />
+            <TopNavbar onSearchClick={onSearchClick} onNavigate={onBucketSelect} onComposeClick={onComposeClick} />
 
             {/* Tier 2: Main Content Area */}
             <main style={{

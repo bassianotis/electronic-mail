@@ -9,7 +9,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Send, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Send, Trash2 } from 'lucide-react';
 import type { Email } from '../../store/mailStore';
 
 interface CompositionPanelProps {
@@ -101,25 +101,6 @@ export const CompositionPanel: React.FC<CompositionPanelProps> = ({
         onDiscard();
     };
 
-    const inputStyle: React.CSSProperties = {
-        width: '100%',
-        padding: 'var(--space-sm) var(--space-md)',
-        fontSize: 'var(--font-size-base)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 'var(--radius-sm)',
-        backgroundColor: '#fff',
-        outline: 'none',
-        transition: 'border-color 0.2s, box-shadow 0.2s'
-    };
-
-    const labelStyle: React.CSSProperties = {
-        fontSize: 'var(--font-size-sm)',
-        fontWeight: 600,
-        color: 'var(--color-text-muted)',
-        marginBottom: 'var(--space-xs)',
-        display: 'block'
-    };
-
     return (
         <motion.div
             initial={{ opacity: 0, x: 50 }}
@@ -136,181 +117,193 @@ export const CompositionPanel: React.FC<CompositionPanelProps> = ({
                 overflow: 'hidden'
             }}
         >
-            {/* Header */}
+            {/* Header - Matches email card header structure exactly */}
             <div style={{
                 padding: 'var(--space-md) var(--space-lg)',
                 borderBottom: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-bg-subtle)',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
-                backgroundColor: 'var(--color-bg-subtle)'
+                alignItems: 'flex-start'
             }}>
-                <h3 style={{
-                    fontSize: 'var(--font-size-lg)',
-                    fontWeight: 600,
-                    color: 'var(--color-text-main)'
-                }}>
-                    Reply
-                </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-                    {/* Draft status */}
-                    <span style={{
-                        fontSize: 'var(--font-size-sm)',
-                        color: 'var(--color-text-muted)'
+                <div style={{ flex: 1 }}>
+                    {/* Row 1: Recipient name + draft badge */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-sm)',
+                        marginBottom: '4px'
                     }}>
-                        {draftStatus === 'saved' && '✓ Saved'}
-                        {draftStatus === 'saving' && 'Saving...'}
-                        {draftStatus === 'unsaved' && body.length > 0 && 'Draft'}
-                    </span>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            padding: 'var(--space-xs)',
-                            borderRadius: 'var(--radius-sm)',
-                            color: 'var(--color-text-muted)',
-                            transition: 'background-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-border)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                        <X size={18} />
-                    </button>
+                        <span style={{
+                            fontWeight: 600,
+                            color: 'var(--color-text-main)',
+                            fontSize: 'var(--font-size-sm)'
+                        }}>
+                            To: {to || 'recipient'}
+                        </span>
+                        {draftStatus === 'unsaved' && body.length > 0 && (
+                            <span style={{
+                                backgroundColor: '#f0f0f0',
+                                color: '#666',
+                                fontSize: '10px',
+                                padding: '2px 6px',
+                                borderRadius: 'var(--radius-full)',
+                                fontWeight: 600
+                            }}>
+                                Draft
+                            </span>
+                        )}
+                    </div>
+                    {/* Row 2: Subject preview + expand arrow */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        flexWrap: 'wrap'
+                    }}>
+                        <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                            {subject}
+                        </span>
+                        <button
+                            onClick={() => setShowCcBcc(!showCcBcc)}
+                            style={{
+                                padding: '2px 6px',
+                                borderRadius: 'var(--radius-sm)',
+                                color: 'var(--color-text-muted)',
+                                fontSize: '10px',
+                                transition: 'background-color 0.2s',
+                                marginLeft: '4px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-border)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                            {showCcBcc ? '▲' : '▼'}
+                        </button>
+                    </div>
                 </div>
+                {/* Close button only on right */}
+                <button
+                    onClick={onClose}
+                    style={{
+                        padding: 'var(--space-xs)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--color-text-muted)',
+                        transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-border)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                    <X size={16} />
+                </button>
             </div>
 
-            {/* Form Fields */}
+            {/* Expandable To/CC/BCC/Subject section */}
+            {showCcBcc && (
+                <div style={{
+                    padding: 'var(--space-sm) var(--space-lg)',
+                    backgroundColor: '#fafafa',
+                    borderBottom: '1px solid #f0f0f0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    fontSize: '12px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: '#999', minWidth: '50px' }}>To:</span>
+                        <input
+                            type="email"
+                            value={to}
+                            onChange={(e) => setTo(e.target.value)}
+                            style={{
+                                flex: 1,
+                                border: 'none',
+                                outline: 'none',
+                                fontSize: '12px',
+                                color: 'var(--color-text-main)',
+                                backgroundColor: 'transparent'
+                            }}
+                        />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: '#999', minWidth: '50px' }}>Cc:</span>
+                        <input
+                            type="email"
+                            value={cc}
+                            onChange={(e) => setCc(e.target.value)}
+                            placeholder="Add Cc..."
+                            style={{
+                                flex: 1,
+                                border: 'none',
+                                outline: 'none',
+                                fontSize: '12px',
+                                color: 'var(--color-text-main)',
+                                backgroundColor: 'transparent'
+                            }}
+                        />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: '#999', minWidth: '50px' }}>Bcc:</span>
+                        <input
+                            type="email"
+                            value={bcc}
+                            onChange={(e) => setBcc(e.target.value)}
+                            placeholder="Add Bcc..."
+                            style={{
+                                flex: 1,
+                                border: 'none',
+                                outline: 'none',
+                                fontSize: '12px',
+                                color: 'var(--color-text-main)',
+                                backgroundColor: 'transparent'
+                            }}
+                        />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: '#999', minWidth: '50px' }}>Subject:</span>
+                        <input
+                            type="text"
+                            value={subject}
+                            onChange={(e) => setSubject(e.target.value)}
+                            style={{
+                                flex: 1,
+                                border: 'none',
+                                outline: 'none',
+                                fontSize: '12px',
+                                color: '#666',
+                                backgroundColor: 'transparent'
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Body - Clean Writing Area */}
             <div style={{
                 flex: 1,
                 overflowY: 'auto',
-                padding: 'var(--space-lg)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 'var(--space-md)'
+                padding: 'var(--space-lg)'
             }}>
-                {/* To Field */}
-                <div>
-                    <label style={labelStyle}>To</label>
-                    <input
-                        type="email"
-                        value={to}
-                        onChange={(e) => setTo(e.target.value)}
-                        placeholder="recipient@example.com"
-                        style={inputStyle}
-                        onFocus={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--color-accent-secondary)';
-                            e.currentTarget.style.boxShadow = '0 0 0 3px rgba(52, 152, 219, 0.1)';
-                        }}
-                        onBlur={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--color-border)';
-                            e.currentTarget.style.boxShadow = 'none';
-                        }}
-                    />
-                </div>
-
-                {/* CC/BCC Toggle */}
-                <button
-                    onClick={() => setShowCcBcc(!showCcBcc)}
+                <textarea
+                    ref={bodyRef}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    placeholder="Write your reply..."
                     style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--space-xs)',
-                        fontSize: 'var(--font-size-sm)',
-                        color: 'var(--color-accent-secondary)',
-                        cursor: 'pointer',
-                        alignSelf: 'flex-start'
+                        flex: 1,
+                        width: '100%',
+                        minHeight: '200px',
+                        border: 'none',
+                        outline: 'none',
+                        resize: 'none',
+                        fontSize: '15px',
+                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        lineHeight: '1.7',
+                        color: '#333',
+                        backgroundColor: 'transparent'
                     }}
-                >
-                    {showCcBcc ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    {showCcBcc ? 'Hide CC/BCC' : 'Add CC/BCC'}
-                </button>
-
-                {/* CC/BCC Fields */}
-                {showCcBcc && (
-                    <>
-                        <div>
-                            <label style={labelStyle}>CC</label>
-                            <input
-                                type="email"
-                                value={cc}
-                                onChange={(e) => setCc(e.target.value)}
-                                placeholder="cc@example.com"
-                                style={inputStyle}
-                                onFocus={(e) => {
-                                    e.currentTarget.style.borderColor = 'var(--color-accent-secondary)';
-                                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(52, 152, 219, 0.1)';
-                                }}
-                                onBlur={(e) => {
-                                    e.currentTarget.style.borderColor = 'var(--color-border)';
-                                    e.currentTarget.style.boxShadow = 'none';
-                                }}
-                            />
-                        </div>
-                        <div>
-                            <label style={labelStyle}>BCC</label>
-                            <input
-                                type="email"
-                                value={bcc}
-                                onChange={(e) => setBcc(e.target.value)}
-                                placeholder="bcc@example.com"
-                                style={inputStyle}
-                                onFocus={(e) => {
-                                    e.currentTarget.style.borderColor = 'var(--color-accent-secondary)';
-                                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(52, 152, 219, 0.1)';
-                                }}
-                                onBlur={(e) => {
-                                    e.currentTarget.style.borderColor = 'var(--color-border)';
-                                    e.currentTarget.style.boxShadow = 'none';
-                                }}
-                            />
-                        </div>
-                    </>
-                )}
-
-                {/* Subject */}
-                <div>
-                    <label style={labelStyle}>Subject</label>
-                    <input
-                        type="text"
-                        value={subject}
-                        onChange={(e) => setSubject(e.target.value)}
-                        style={inputStyle}
-                        onFocus={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--color-accent-secondary)';
-                            e.currentTarget.style.boxShadow = '0 0 0 3px rgba(52, 152, 219, 0.1)';
-                        }}
-                        onBlur={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--color-border)';
-                            e.currentTarget.style.boxShadow = 'none';
-                        }}
-                    />
-                </div>
-
-                {/* Body */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <label style={labelStyle}>Message</label>
-                    <textarea
-                        ref={bodyRef}
-                        value={body}
-                        onChange={(e) => setBody(e.target.value)}
-                        placeholder="Write your reply..."
-                        style={{
-                            ...inputStyle,
-                            flex: 1,
-                            minHeight: '200px',
-                            resize: 'none',
-                            fontFamily: 'inherit',
-                            lineHeight: '1.6'
-                        }}
-                        onFocus={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--color-accent-secondary)';
-                            e.currentTarget.style.boxShadow = '0 0 0 3px rgba(52, 152, 219, 0.1)';
-                        }}
-                        onBlur={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--color-border)';
-                            e.currentTarget.style.boxShadow = 'none';
-                        }}
-                    />
-                </div>
+                />
             </div>
 
             {/* Action Bar */}

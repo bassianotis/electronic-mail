@@ -178,12 +178,14 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         };
 
         const handleEmailUpdated = (e: any) => {
-            if (e.detail && e.detail.id) {
+            if (e.detail) {
+                const { id, updates } = e.detail;
+                // Match by id OR by messageId (for thread emails)
                 setBucketEmails(prev => prev.map(email => {
-                    if (email.id === e.detail.id) {
+                    if (email.id === id || email.messageId === id) {
                         return {
                             ...email,
-                            ...e.detail.updates
+                            ...updates
                         };
                     }
                     return email;
@@ -291,16 +293,43 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         }
 
         // For each thread, sort by date and return the latest email with thread count
-        const result: Array<{ email: Email; threadCount: number }> = [];
+        // Also aggregate notes and due dates from all emails in the thread
+        const result: Array<{ email: Email; threadCount: number; allNotes: string[]; allDueDates: Date[] }> = [];
         for (const [key, emails] of threadMap) {
             // Sort by date descending
             emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
             console.log(`[BucketGallery] Thread group '${key}': ${emails.length} emails`);
 
+            // Collect all notes and due dates from the thread
+            const allNotes = emails.map(e => e.note).filter((n): n is string => !!n);
+            const allDueDates = emails
+                .map(e => e.dueDate ? new Date(e.dueDate) : null)
+                .filter((d): d is Date => d !== null)
+                .sort((a, b) => a.getTime() - b.getTime()); // Earliest first
+
+            // Create enhanced email with aggregated metadata
+            const latestEmail = { ...emails[0] };
+
+            // Always aggregate notes from all emails in thread
+            if (allNotes.length > 0) {
+                // Show unique notes, indicate if there are multiple
+                const uniqueNotes = [...new Set(allNotes)];
+                latestEmail.note = uniqueNotes.length > 1
+                    ? `${uniqueNotes[0]} (+${uniqueNotes.length - 1} more)`
+                    : uniqueNotes[0];
+            }
+
+            // Always use earliest due date from thread
+            if (allDueDates.length > 0) {
+                latestEmail.dueDate = allDueDates[0];
+            }
+
             result.push({
-                email: emails[0], // Latest email
-                threadCount: emails.length
+                email: latestEmail,
+                threadCount: emails.length,
+                allNotes,
+                allDueDates
             });
         }
 

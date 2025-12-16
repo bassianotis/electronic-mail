@@ -715,12 +715,95 @@ export async function autoConsolidateThreads(): Promise<number> {
     return consolidated;
 }
 
+/**
+ * Get all emails in a specific thread
+ * Returns emails in chronological order with full body content
+ */
+export async function getThreadEmails(threadId: string): Promise<any[]> {
+    // First, find the email and get its normalized subject
+    const emailResult = await db.query(`
+        SELECT message_id, subject, thread_id, normalized_subject FROM email_metadata
+        WHERE message_id = ? OR thread_id = ?
+        LIMIT 1
+    `, [threadId, threadId]);
+
+    if (!emailResult.rows || emailResult.rows.length === 0) {
+        console.log(`[threadService] getThreadEmails: No email found for ${threadId}`);
+        return [];
+    }
+
+    const email = emailResult.rows[0];
+    const normalizedSubj = email.normalized_subject || normalizeSubject(email.subject || '');
+
+    console.log(`[threadService] getThreadEmails: Looking for thread with subject "${normalizedSubj}"`);
+
+    if (!normalizedSubj) {
+        // No subject to match on, return just this email
+        const singleResult = await db.query(`
+            SELECT 
+                message_id as messageId,
+                uid,
+                subject,
+                sender,
+                sender_address as senderAddress,
+                date,
+                preview,
+                body_html as bodyHtml,
+                body_text as bodyText,
+                mailbox,
+                notes as note,
+                due_date as dueDate
+            FROM email_metadata
+            WHERE message_id = ?
+        `, [email.message_id]);
+        return singleResult.rows || [];
+    }
+
+    // Find ALL emails with matching normalized subject (across all locations)
+    const allEmails = await db.query(`
+        SELECT 
+            message_id as messageId,
+            uid,
+            subject,
+            sender,
+            sender_address as senderAddress,
+            date,
+            preview,
+            body_html as bodyHtml,
+            body_text as bodyText,
+            mailbox,
+            notes as note,
+            due_date as dueDate
+        FROM email_metadata
+        ORDER BY date ASC
+    `);
+
+    if (!allEmails.rows || allEmails.rows.length === 0) {
+        return [];
+    }
+
+    // Filter by normalized subject in JavaScript
+    const matchingEmails = allEmails.rows.filter((row: { subject: string }) =>
+        normalizeSubject(row.subject || '') === normalizedSubj
+    );
+
+    console.log(`[threadService] getThreadEmails: Found ${matchingEmails.length} emails in thread`);
+
+    // Sort by date ascending (chronological)
+    matchingEmails.sort((a: { date: string }, b: { date: string }) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+
+    return matchingEmails;
+}
+
 export const threadService = {
     normalizeSubject,
     computeThreadId,
     getInboxThreads,
     getBucketThreads,
     getArchiveThreads,
+    getThreadEmails,
     moveThreadToBucket,
     archiveThread,
     unarchiveThread,
