@@ -3,6 +3,16 @@ import { simpleParser } from 'mailparser';
 import { configService } from './configService';
 import { db } from './dbService';
 
+// Helper to normalize subject for thread matching (same logic as threadService)
+const normalizeSubject = (subject: string): string => {
+    if (!subject) return '';
+    return subject
+        .replace(/^(Re|Fwd|Fw|RE|FW|FWD):\s*/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+};
+
 const createClient = () => {
     const imapConfig = configService.getImapConfig();
 
@@ -234,13 +244,15 @@ export const imapService = {
                         // Persist to DB for offline access
                         const senderName = message.envelope.from?.[0]?.name || message.envelope.from?.[0]?.address || 'Unknown';
                         const senderAddress = message.envelope.from?.[0]?.address || '';
+                        const normalizedSubj = normalizeSubject(message.envelope.subject || '');
 
                         // Fire and forget DB update
                         db.query(`
-                            INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, snippet, uid)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO email_metadata (message_id, subject, normalized_subject, sender, sender_address, date, snippet, uid)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             ON CONFLICT(message_id) DO UPDATE SET
                                 subject = excluded.subject,
+                                normalized_subject = excluded.normalized_subject,
                                 sender = excluded.sender,
                                 sender_address = excluded.sender_address,
                                 date = excluded.date,
@@ -248,6 +260,7 @@ export const imapService = {
                         `, [
                             message.envelope.messageId,
                             message.envelope.subject || '(No Subject)',
+                            normalizedSubj,
                             senderName,
                             senderAddress,
                             message.envelope.date?.toISOString() || new Date().toISOString(),
@@ -435,6 +448,47 @@ export const imapService = {
                 console.error('Error searching Archives:', err);
             } finally {
                 archiveLock.release();
+            }
+
+            // Check Sent folder if configured
+            const syncSettings = configService.getSyncSettings();
+            const sentFolderName = syncSettings.sentFolderName;
+
+            if (sentFolderName) {
+                try {
+                    const sentLock = await client.getMailboxLock(sentFolderName);
+                    try {
+                        await client.mailboxOpen(sentFolderName);
+                        const searchResult = await client.search({ header: { 'message-id': messageId } });
+
+                        if (searchResult && searchResult.length > 0) {
+                            const seqNum = searchResult[0];
+                            const message = await client.fetchOne(seqNum, { source: true });
+
+                            if (message && typeof message !== 'boolean' && message.source) {
+                                console.log(`✅ Found email via fallback search in Sent folder`);
+                                const parsed = await simpleParser(message.source as any);
+
+                                const attachments = parsed.attachments ? parsed.attachments.map((att: MailParserAttachment) => ({
+                                    filename: att.filename || 'unnamed',
+                                    contentType: att.contentType,
+                                    size: att.size,
+                                    content: att.content
+                                })) : [];
+
+                                return {
+                                    html: parsed.html || parsed.textAsHtml || parsed.text,
+                                    text: parsed.text,
+                                    attachments
+                                };
+                            }
+                        }
+                    } finally {
+                        sentLock.release();
+                    }
+                } catch (err) {
+                    console.error('Error searching Sent folder:', err);
+                }
             }
 
             return { html: '<p>Email not found.</p>', text: 'Email not found.' };
@@ -747,6 +801,107 @@ export const imapService = {
 
             // Sort by date descending (newest first)
             return messages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        } finally {
+            lock.release();
+        }
+    },
+
+    // 6b. Fetch Sent Emails - From configured Sent folder (for thread display)
+    fetchSentEmails: async (): Promise<EmailSummary[]> => {
+        const syncSettings = configService.getSyncSettings();
+        const sentFolderName = syncSettings.sentFolderName;
+
+        // Skip if no sent folder configured
+        if (!sentFolderName) {
+            console.log('📤 [IMAP] No sent folder configured, skipping sent email sync');
+            return [];
+        }
+
+        await ensureConnection();
+
+        // Check if folder exists
+        let folderExists = false;
+        try {
+            await client.mailboxOpen(sentFolderName, { readOnly: true });
+            folderExists = true;
+            await client.mailboxClose();
+        } catch (err) {
+            console.log(`📤 [IMAP] Sent folder "${sentFolderName}" does not exist or cannot be opened`);
+            return [];
+        }
+
+        if (!folderExists) return [];
+
+        const lock = await client.getMailboxLock(sentFolderName);
+        try {
+            await client.mailboxOpen(sentFolderName);
+            const messages: EmailSummary[] = [];
+            const cutoffDate = syncSettings.startDate ? new Date(syncSettings.startDate) : new Date('2025-11-30');
+
+            console.log(`📤 [IMAP] Fetching sent emails from "${sentFolderName}" since ${cutoffDate.toISOString()}`);
+
+            let totalScanned = 0;
+            let savedToDb = 0;
+
+            // Fetch all messages with envelope, flags, and headers (for threading)
+            for await (const message of client.fetch('1:*', { envelope: true, uid: true }) as AsyncGenerator<ImapMessage>) {
+                totalScanned++;
+
+                if (message.envelope && message.envelope.date) {
+                    const emailDate = new Date(message.envelope.date);
+
+                    // Filter by start date
+                    if (emailDate < cutoffDate) {
+                        continue;
+                    }
+
+                    // Skip if missing Message-ID
+                    if (!message.envelope.messageId) {
+                        continue;
+                    }
+
+                    messages.push({
+                        uid: message.uid,
+                        messageId: message.envelope.messageId,
+                        subject: message.envelope.subject,
+                        from: message.envelope.from,
+                        date: message.envelope.date
+                    });
+
+                    // Persist to DB with mailbox = 'Sent'
+                    // For sent emails, we use 'to' as the main contact
+                    const recipientName = message.envelope.to?.[0]?.name || message.envelope.to?.[0]?.address || 'Unknown';
+                    const recipientAddress = message.envelope.to?.[0]?.address || '';
+                    const senderName = syncSettings.displayName || message.envelope.from?.[0]?.name || 'Me';
+                    const senderAddress = message.envelope.from?.[0]?.address || '';
+                    const normalizedSubj = normalizeSubject(message.envelope.subject || '');
+
+                    db.query(`
+                        INSERT INTO email_metadata (message_id, subject, normalized_subject, sender, sender_address, date, snippet, uid, mailbox)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Sent')
+                        ON CONFLICT(message_id) DO UPDATE SET
+                            subject = excluded.subject,
+                            normalized_subject = excluded.normalized_subject,
+                            sender = excluded.sender,
+                            sender_address = excluded.sender_address,
+                            date = excluded.date,
+                            uid = excluded.uid,
+                            mailbox = 'Sent'
+                    `, [
+                        message.envelope.messageId,
+                        message.envelope.subject || '(No Subject)',
+                        normalizedSubj,
+                        senderName,  // Use display name for sent emails
+                        senderAddress,
+                        message.envelope.date?.toISOString() || new Date().toISOString(),
+                        `To: ${recipientName}`,  // Show recipient in snippet
+                        message.uid
+                    ]).then(() => { savedToDb++; }).catch(err => console.error('📤 [IMAP] Error persisting sent email to DB:', err));
+                }
+            }
+
+            console.log(`📤 [IMAP] Sent email sync complete: ${totalScanned} scanned, ${messages.length} saved after date filter`);
+            return messages;
         } finally {
             lock.release();
         }

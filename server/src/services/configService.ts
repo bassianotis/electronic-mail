@@ -12,6 +12,7 @@ export interface SyncSettings {
     startDate?: string; // ISO date string
     displayName?: string;
     importStarred?: boolean;
+    sentFolderName?: string; // IMAP folder name for sent emails, e.g., "[Gmail]/Sent Mail"
 }
 
 export interface AuthSettings {

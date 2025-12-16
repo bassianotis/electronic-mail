@@ -1,9 +1,228 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Trash2, Plus } from 'lucide-react';
+import { X, Trash2, Plus, Loader, Check } from 'lucide-react';
 import { useMail } from '../../context/MailContext';
 import { BucketSelector } from './BucketSelector';
+
+// Sync Configuration Section Component
+const SyncConfigSection: React.FC = () => {
+    const [sentFolderName, setSentFolderName] = useState('');
+    const [displayName, setDisplayName] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [importStarred, setImportStarred] = useState(true);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
+    const [error, setError] = useState('');
+
+    // Fetch current sync settings on mount
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const response = await fetch('/api/setup/sync-settings');
+                if (response.ok) {
+                    const data = await response.json();
+                    setSentFolderName(data.sentFolderName || '');
+                    setDisplayName(data.displayName || '');
+                    setStartDate(data.startDate ? data.startDate.split('T')[0] : '');
+                    setImportStarred(data.importStarred !== false); // Default true
+                }
+            } catch (err) {
+                console.error('Failed to fetch sync settings:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchSettings();
+    }, []);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        setError('');
+        setSaveSuccess(false);
+
+        try {
+            const response = await fetch('/api/setup/sync-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sentFolderName,
+                    displayName,
+                    startDate: startDate ? new Date(startDate + 'T00:00:00').toISOString() : null,
+                    importStarred
+                })
+            });
+
+            if (response.ok) {
+                setSaveSuccess(true);
+                setTimeout(() => setSaveSuccess(false), 2000);
+            } else {
+                const data = await response.json();
+                setError(data.error || 'Failed to save settings');
+            }
+        } catch (err: any) {
+            setError('Failed to save: ' + err.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <div style={{ marginTop: '32px', paddingTop: '32px', borderTop: '1px solid var(--color-border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-text-muted)' }}>
+                    <Loader size={16} className="animate-spin" />
+                    Loading sync settings...
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div style={{ marginTop: '32px', paddingTop: '32px', borderTop: '1px solid var(--color-border)' }}>
+            <div style={{ marginBottom: '16px' }}>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 600 }}>Sync Configuration</h3>
+                <p style={{ margin: 0, fontSize: '14px', color: 'var(--color-text-secondary)' }}>
+                    Configure email syncing and display settings
+                </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>
+                        Display Name
+                    </label>
+                    <input
+                        type="text"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="Your name (shown in sent emails)"
+                        style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--color-border)',
+                            fontSize: '14px',
+                            backgroundColor: 'var(--color-bg-subtle)'
+                        }}
+                    />
+                </div>
+
+                <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>
+                        Sent Folder Name
+                    </label>
+                    <input
+                        type="text"
+                        value={sentFolderName}
+                        onChange={(e) => setSentFolderName(e.target.value)}
+                        placeholder="e.g., [Gmail]/Sent Mail, Sent"
+                        style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--color-border)',
+                            fontSize: '14px',
+                            backgroundColor: 'var(--color-bg-subtle)'
+                        }}
+                    />
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                        IMAP folder name for syncing sent emails. Leave blank to disable.
+                    </div>
+                </div>
+
+                <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>
+                        Sync Start Date
+                    </label>
+                    <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--color-border)',
+                            fontSize: '14px',
+                            backgroundColor: 'var(--color-bg-subtle)'
+                        }}
+                    />
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                        Only sync inbox and sent emails from this date onwards. Bucketed emails are not affected.
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                        type="checkbox"
+                        id="importStarred"
+                        checked={importStarred}
+                        onChange={(e) => setImportStarred(e.target.checked)}
+                        style={{
+                            width: '16px',
+                            height: '16px',
+                            cursor: 'pointer'
+                        }}
+                    />
+                    <label htmlFor="importStarred" style={{ fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>
+                        Include starred emails (regardless of date)
+                    </label>
+                </div>
+
+                {error && (
+                    <div style={{
+                        padding: '10px',
+                        backgroundColor: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '8px',
+                        color: '#b91c1c',
+                        fontSize: '13px'
+                    }}>
+                        {error}
+                    </div>
+                )}
+
+                <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: saveSuccess ? '#16a34a' : 'var(--color-primary)',
+                        color: '#fff',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        cursor: isSaving ? 'wait' : 'pointer',
+                        opacity: isSaving ? 0.7 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        alignSelf: 'flex-start'
+                    }}
+                >
+                    {isSaving ? (
+                        <>
+                            <Loader size={14} className="animate-spin" />
+                            Saving...
+                        </>
+                    ) : saveSuccess ? (
+                        <>
+                            <Check size={14} />
+                            Saved!
+                        </>
+                    ) : (
+                        'Save Sync Settings'
+                    )}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -287,6 +506,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     )}
                                 </div>
                             </div>
+
+                            {/* Section: Sync Configuration */}
+                            <SyncConfigSection />
 
                             {/* Section: Account Settings */}
                             <div style={{ marginTop: '32px', paddingTop: '32px', borderTop: '1px solid var(--color-border)' }}>

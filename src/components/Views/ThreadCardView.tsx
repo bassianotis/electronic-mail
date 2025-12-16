@@ -141,6 +141,9 @@ export const ThreadCardView: React.FC<ThreadCardViewProps> = ({
     // Due dates stored per email (keyed by messageId)
     const [emailDates, setEmailDates] = useState<Map<string, string>>(new Map());
 
+    // User display name for sent emails
+    const [userDisplayName, setUserDisplayName] = useState<string>('You');
+
     // Mark email as read
     useEffect(() => {
         if (email && email.uid) {
@@ -149,6 +152,24 @@ export const ThreadCardView: React.FC<ThreadCardViewProps> = ({
             markAsRead(email.id);
         }
     }, [email?.id]);
+
+    // Fetch user display name for sent emails
+    useEffect(() => {
+        const fetchUserDisplayName = async () => {
+            try {
+                const response = await fetch('/api/setup/sync-settings', { credentials: 'include' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.displayName) {
+                        setUserDisplayName(data.displayName);
+                    }
+                }
+            } catch (err) {
+                console.log('Could not fetch display name, using default');
+            }
+        };
+        fetchUserDisplayName();
+    }, []);
 
     // Initialize with the current email and fetch thread
     useEffect(() => {
@@ -798,7 +819,7 @@ export const ThreadCardView: React.FC<ThreadCardViewProps> = ({
                                                     color: readerMode ? '#e0e0e0' : 'var(--color-text-main)',
                                                     fontSize: 'var(--font-size-sm)'
                                                 }}>
-                                                    {e.sender}
+                                                    {isSent ? userDisplayName : e.sender}
                                                 </span>
                                                 {isSent && (
                                                     <span style={{

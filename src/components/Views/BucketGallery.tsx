@@ -16,6 +16,7 @@ type GroupBy = 'none' | 'sender';
 export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEmail }) => {
     const { emails: globalEmails, loadEmailBody, setCurrentView, addEmailsToInbox } = useMail();
     const [bucketEmails, setBucketEmails] = React.useState<Email[]>([]);
+    const [serverThreadCounts, setServerThreadCounts] = React.useState<Map<string, number>>(new Map());
     const [groupBy, setGroupBy] = React.useState<GroupBy>('none');
     const [showGroupMenu, setShowGroupMenu] = React.useState(false);
 
@@ -132,6 +133,32 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         };
 
         fetchBucketEmails();
+
+        // Also fetch server-side thread counts (includes sent emails)
+        const fetchThreadCounts = async () => {
+            try {
+                const res = await fetch(`/api/threads/bucket/${bucket.id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const countMap = new Map<string, number>();
+                    for (const thread of data.threads || []) {
+                        // Key by normalized subject for lookup
+                        const normalizedSubj = thread.latestEmail?.subject
+                            ?.replace(/^(Re|Fwd|Fw|RE|FW|FWD):\s*/gi, '')
+                            .replace(/\s+/g, ' ')
+                            .trim()
+                            .toLowerCase() || '';
+                        if (normalizedSubj) {
+                            countMap.set(normalizedSubj, thread.count);
+                        }
+                    }
+                    setServerThreadCounts(countMap);
+                }
+            } catch (err) {
+                console.error('Error loading thread counts:', err);
+            }
+        };
+        fetchThreadCounts();
     }, [bucket]);
 
     // Sync with global emails state for metadata updates (notes, due dates, body, preview)  
@@ -279,7 +306,6 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
 
     // Group emails by normalized subject (thread grouping)
     const threadedEmails = React.useMemo(() => {
-        console.log('[BucketGallery] bucketEmails length:', bucketEmails.length);
         const threadMap = new Map<string, Email[]>();
 
         for (const email of bucketEmails) {
@@ -298,8 +324,6 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         for (const [key, emails] of threadMap) {
             // Sort by date descending
             emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-            console.log(`[BucketGallery] Thread group '${key}': ${emails.length} emails`);
 
             // Collect all notes and due dates from the thread
             const allNotes = emails.map(e => e.note).filter((n): n is string => !!n);
@@ -327,7 +351,8 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
 
             result.push({
                 email: latestEmail,
-                threadCount: emails.length,
+                // Use server count if available (includes sent emails), fallback to local count
+                threadCount: serverThreadCounts.get(key) || emails.length,
                 allNotes,
                 allDueDates
             });
@@ -335,9 +360,8 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
 
         // Sort threads by latest email date
         result.sort((a, b) => new Date(b.email.date).getTime() - new Date(a.email.date).getTime());
-        console.log('[BucketGallery] threadedEmails count:', result.length);
         return result;
-    }, [bucketEmails]);
+    }, [bucketEmails, serverThreadCounts]);
 
     const renderUngrouped = () => {
         return (

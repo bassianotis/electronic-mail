@@ -14,12 +14,29 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
     const { emails, buckets, setCurrentView, isLoading, isSyncing, fetchInboxThreads, bucketThread, archiveThread } = useMail();
     const [lastBucketed, setLastBucketed] = useState<{ email: Email; bucketId: string } | null>(null);
     const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
+    const [serverThreadCounts, setServerThreadCounts] = useState<Map<string, number>>(new Map());
 
     // Set current view to inbox when this component mounts
     useEffect(() => {
         setCurrentView('inbox');
-        // Fetch threads for thread count data
-        fetchInboxThreads();
+        // Fetch threads for thread count data and build count lookup
+        const loadThreadCounts = async () => {
+            const threads = await fetchInboxThreads();
+            const countMap = new Map<string, number>();
+            for (const thread of threads) {
+                // Key by normalized subject for lookup
+                const normalizedSubj = thread.latestEmail?.subject
+                    ?.replace(/^(Re|Fwd|Fw|RE|FW|FWD):\s*/gi, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase() || '';
+                if (normalizedSubj) {
+                    countMap.set(normalizedSubj, thread.count);
+                }
+            }
+            setServerThreadCounts(countMap);
+        };
+        loadThreadCounts();
     }, [setCurrentView, fetchInboxThreads]);
 
 
@@ -57,11 +74,13 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
         for (const [_, threadEmails] of threadMap) {
             const latest = threadEmails[0]; // Already sorted by date desc
             emails.push(latest);
-            counts.set(latest.id, threadEmails.length);
+            // Use server count if available (includes sent emails), fallback to local count
+            const normalizedSubj = normalizeSubject(latest.subject);
+            counts.set(latest.id, serverThreadCounts.get(normalizedSubj) || threadEmails.length);
         }
 
         return { inboxEmails: emails, clientThreadCounts: counts };
-    }, [allInboxEmails]);
+    }, [allInboxEmails, serverThreadCounts]);
 
     const handleBucket = async (emailId: string, bucketId: string) => {
         const email = inboxEmails.find(e => e.id === emailId);

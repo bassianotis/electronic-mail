@@ -16,6 +16,7 @@ interface FormData {
     displayName: string;
     importStarred: boolean;
     webPassword?: string;
+    sentFolderName: string;
 }
 
 export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
@@ -29,7 +30,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
         secure: true,
         startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
         displayName: '',
-        importStarred: true
+        importStarred: true,
+        sentFolderName: ''
     });
     const [validating, setValidating] = useState(false);
     const [connectionSuccess, setConnectionSuccess] = useState(false);
@@ -48,18 +50,22 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
             updateField('host', 'imap.gmail.com');
             updateField('port', '993');
             updateField('secure', true);
+            updateField('sentFolderName', '[Gmail]/Sent Mail');
         } else if (domain?.includes('outlook') || domain?.includes('hotmail') || domain?.includes('live')) {
             updateField('host', 'outlook.office365.com');
             updateField('port', '993');
             updateField('secure', true);
+            updateField('sentFolderName', 'Sent');
         } else if (domain?.includes('yahoo')) {
             updateField('host', 'imap.mail.yahoo.com');
             updateField('port', '993');
             updateField('secure', true);
+            updateField('sentFolderName', 'Sent');
         } else if (domain?.includes('icloud')) {
             updateField('host', 'imap.mail.me.com');
             updateField('port', '993');
             updateField('secure', true);
+            updateField('sentFolderName', 'Sent Messages');
         }
     };
 
@@ -144,6 +150,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                     startDate: formData.startDate,
                     displayName: formData.displayName || formData.email.split('@')[0],
                     importStarred: formData.importStarred,
+                    sentFolderName: formData.sentFolderName || undefined,
                     webPassword: formData.webPassword
                 })
             }).then(res => res.json()).then(data => {
@@ -401,6 +408,30 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                                         <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
                                             Always fetch flagged/starred emails, regardless of date.
                                         </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>
+                                        Sent Folder Name (optional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.sentFolderName}
+                                        onChange={(e) => updateField('sentFolderName', e.target.value)}
+                                        placeholder="e.g., [Gmail]/Sent Mail, Sent"
+                                        style={{
+                                            width: '100%',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--color-border)',
+                                            fontSize: '14px',
+                                            backgroundColor: 'var(--color-bg-subtle)',
+                                            color: 'var(--color-text-primary)'
+                                        }}
+                                    />
+                                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                                        To include sent emails in thread views. Leave blank to skip.
                                     </div>
                                 </div>
 

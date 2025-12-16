@@ -160,15 +160,15 @@ Enable users to compose and send emails with core email functionality, including
 **Thread Display:**
 - [ ] Collapsed view: Show single row with thread count badge
 - [ ] Use most recent email's subject, sender, and preview for collapsed display
-- [ ] Thread count includes ALL emails in thread (received + sent) that are stored locally
+- [x] Thread count includes ALL emails in thread (received + sent) via server-side `normalized_subject` counting
 - [ ] Expand to see individual messages in chronological order
 - [ ] Gmail-style: Each message is viewed individually, not showing prior messages inline
 
 **Thread Operations:**
 - [ ] Drag/drop operates on entire thread (moves all received emails)
-- [ ] Sent emails display in thread but are NOT moved during bucket/archive operations
+- [x] Sent emails display in thread but are NOT moved during bucket/archive operations
 - [ ] All received emails in a thread share the same bucket_id
-- [ ] Archived threads show sent emails inline in archive view
+- [x] Archived threads show sent emails inline in archive view
 
 **Thread-Level Archiving (Key Behavior):**
 - [ ] **No local archive storage**: Archived emails stay on IMAP only (archive is too large to cache locally)
@@ -186,19 +186,38 @@ Enable users to compose and send emails with core email functionality, including
 - [ ] Quick action: "Return to [Bucket Name]" (emphasized over Archive)
 - [ ] This ensures user never misses new emails by having to check multiple buckets
 
-### 11. Sent Mail Sync (New Functionality)
-**Priority**: P0 (Must Have)
+### 11. Sent Mail Sync
+**Priority**: P0 (Must Have) — **IMPLEMENTED**
 
 **Syncing Sent Emails:**
-- [ ] Sync sent emails from IMAP Sent folder to local database
-- [ ] Fetch threading headers (References, In-Reply-To) for sent emails
-- [ ] Associate sent emails with threads using same algorithm as received emails
-- [ ] Store with `is_sent = true` or `mailbox = 'Sent'` flag
+- [x] Sync sent emails from IMAP Sent folder to local database
+- [x] Configurable sent folder name (e.g., `[Gmail]/Sent Mail`, `Sent`, `Sent Messages`)
+- [x] Auto-detection hints in setup wizard for common providers (Gmail, Outlook, iCloud, Yahoo)
+- [x] Fetch threading headers (References, In-Reply-To) for sent emails
+- [x] Associate sent emails with threads using `normalized_subject` matching
+- [x] Store with `mailbox = 'Sent'` flag
+- [x] Respect startDate sync filter (same as inbox)
 
 **Storage:**
-- [ ] Store sent emails in local `email_metadata` table (same as inbox/bucketed emails)
-- [ ] sent emails use same schema but are distinguished by mailbox/is_sent flag
-- [ ] Sent emails are NOT assigned to buckets (they remain in Sent folder)
+- [x] Store sent emails in local `email_metadata` table
+- [x] Distinguished by `mailbox = 'Sent'`
+- [x] Sent emails are NOT assigned to buckets
+- [x] Sent emails excluded from inbox/bucket/archive list queries
+- [x] Sent emails included in thread detail views
+
+### 11a. Sync Configuration
+**Priority**: P1 (Should Have) — **IMPLEMENTED**
+
+**Settings Modal:**
+- [x] Display name editable (used for sent email display)
+- [x] Sent folder name editable
+- [x] Sync start date adjustable
+- [x] Import starred emails toggle
+
+**Setup Wizard:**
+- [x] Sent folder input with provider hints
+- [x] Start date picker
+- [x] Display name input
 
 ### 12. Sending New Mail
 **Priority**: P0 (Must Have)
@@ -437,6 +456,11 @@ The following components need design:
 | 2025-12-10 | Thread count includes received + sent | User confirmed | Confirmed |
 | 2025-12-10 | Individual message view (not inline thread) | Like Gmail - view one message at a time | Confirmed |
 | 2025-12-10 | New emails in bucketed threads return to Inbox | Inbox is sole source of truth for new arrivals | Confirmed |
+| 2025-12-16 | Sent folder manually configurable with hints | Auto-detection unreliable across providers; hints are helpful | Confirmed |
+| 2025-12-16 | Sent emails use `mailbox='Sent'` field | Simpler than separate is_sent boolean | Confirmed |
+| 2025-12-16 | Thread counts via `normalized_subject` | Allows counting across mailboxes (inbox+sent) | Confirmed |
+| 2025-12-16 | startDate sync filter adjustable in settings | User may want to change after initial setup | Confirmed |
+| 2025-12-16 | Server-side thread count API | All views (inbox/bucket/archive) fetch counts from server for consistency | Confirmed |
 
 ### Design Iterations
 
@@ -453,7 +477,7 @@ The following components need design:
 1. **Composition UI**: Modal, sidebar, full-page, or inline? (User has opinions to share later)
 2. **Retry Logic**: What's the maximum retry attempts for failed IMAP saves before giving up?
 3. **Background Sync Indicator**: How prominent should the "syncing..." indicator be?
-4. **Sent Email Sync Frequency**: How often should we sync sent emails from IMAP?
+4. ~~**Sent Email Sync Frequency**: How often should we sync sent emails from IMAP?~~ **RESOLVED**: Sent emails sync on same 5-minute interval as inbox.
 
 ---
 

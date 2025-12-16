@@ -113,7 +113,16 @@ export async function syncAllBuckets(): Promise<void> {
         // 2. Reconcile inbox with IMAP (detect external changes)
         await reconcileWithImap();
 
-        // 3. Sync all buckets
+        // 3. Sync sent emails (for thread display)
+        console.log('  📤 Syncing sent emails...');
+        try {
+            await imapService.fetchSentEmails();
+            console.log('  ✓ Sent email sync complete');
+        } catch (err) {
+            console.error('  ✗ Sent email sync failed:', err);
+        }
+
+        // 4. Sync all buckets
         for (const bucket of buckets) {
             try {
                 console.log(`  Syncing bucket: ${bucket.id}`);

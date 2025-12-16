@@ -66,6 +66,7 @@ export async function computeThreadId(
     return messageId;
 }
 
+
 /**
  * Get all message_ids that belong to the same thread
  * Uses normalized_subject matching with fallback to thread_id
@@ -156,6 +157,7 @@ export async function getInboxThreads(): Promise<ThreadGroup[]> {
             COALESCE(thread_id, message_id) as thread_id,
             message_id,
             subject,
+            normalized_subject,
             sender,
             sender_address,
             date,
@@ -183,16 +185,43 @@ export async function getInboxThreads(): Promise<ThreadGroup[]> {
         threadMap.get(tid)!.push(row);
     }
 
+    // Get all unique normalized subjects for batch count lookup
+    const subjects = new Set<string>();
+    for (const emails of threadMap.values()) {
+        const subject = emails[0]?.normalized_subject || normalizeSubject(emails[0]?.subject || '');
+        if (subject) subjects.add(subject);
+    }
+
+    // Batch get counts for all subjects (including sent emails)
+    const subjectCounts = new Map<string, number>();
+    if (subjects.size > 0) {
+        const placeholders = Array.from(subjects).map(() => '?').join(',');
+        const countResult = await db.query(`
+            SELECT normalized_subject, COUNT(*) as count 
+            FROM email_metadata 
+            WHERE normalized_subject IN (${placeholders})
+            GROUP BY normalized_subject
+        `, Array.from(subjects));
+
+        for (const row of (countResult.rows || [])) {
+            subjectCounts.set(row.normalized_subject, row.count);
+        }
+    }
+
     // Convert to ThreadGroup array
     const threads: ThreadGroup[] = [];
     for (const [threadId, emails] of threadMap) {
         // Sort by date descending to get latest
         emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         const latest = emails[0];
+        const normalizedSubj = latest.normalized_subject || normalizeSubject(latest.subject || '');
+
+        // Use batch count (includes sent emails), fallback to received-only count
+        const totalCount = subjectCounts.get(normalizedSubj) || emails.length;
 
         threads.push({
             threadId,
-            count: emails.length,
+            count: totalCount,
             latestEmail: {
                 messageId: latest.message_id,
                 uid: latest.uid,
@@ -222,6 +251,7 @@ export async function getBucketThreads(bucketId: string): Promise<ThreadGroup[]>
             COALESCE(thread_id, message_id) as thread_id,
             message_id,
             subject,
+            normalized_subject,
             sender,
             sender_address,
             date,
@@ -249,15 +279,42 @@ export async function getBucketThreads(bucketId: string): Promise<ThreadGroup[]>
         threadMap.get(tid)!.push(row);
     }
 
+    // Get all unique normalized subjects for batch count lookup
+    const subjects = new Set<string>();
+    for (const emails of threadMap.values()) {
+        const subject = emails[0]?.normalized_subject || normalizeSubject(emails[0]?.subject || '');
+        if (subject) subjects.add(subject);
+    }
+
+    // Batch get counts for all subjects (including sent emails)
+    const subjectCounts = new Map<string, number>();
+    if (subjects.size > 0) {
+        const placeholders = Array.from(subjects).map(() => '?').join(',');
+        const countResult = await db.query(`
+            SELECT normalized_subject, COUNT(*) as count 
+            FROM email_metadata 
+            WHERE normalized_subject IN (${placeholders})
+            GROUP BY normalized_subject
+        `, Array.from(subjects));
+
+        for (const row of (countResult.rows || [])) {
+            subjectCounts.set(row.normalized_subject, row.count);
+        }
+    }
+
     // Convert to ThreadGroup array
     const threads: ThreadGroup[] = [];
     for (const [threadId, emails] of threadMap) {
         emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         const latest = emails[0];
+        const normalizedSubj = latest.normalized_subject || normalizeSubject(latest.subject || '');
+
+        // Use batch count (includes sent emails), fallback to received-only count
+        const totalCount = subjectCounts.get(normalizedSubj) || emails.length;
 
         threads.push({
             threadId,
-            count: emails.length,
+            count: totalCount,
             latestEmail: {
                 messageId: latest.message_id,
                 uid: latest.uid,
@@ -285,6 +342,7 @@ export async function getArchiveThreads(): Promise<ThreadGroup[]> {
             COALESCE(thread_id, message_id) as thread_id,
             message_id,
             subject,
+            normalized_subject,
             sender,
             sender_address,
             date,
@@ -312,15 +370,42 @@ export async function getArchiveThreads(): Promise<ThreadGroup[]> {
         threadMap.get(tid)!.push(row);
     }
 
+    // Get all unique normalized subjects for batch count lookup
+    const subjects = new Set<string>();
+    for (const emails of threadMap.values()) {
+        const subject = emails[0]?.normalized_subject || normalizeSubject(emails[0]?.subject || '');
+        if (subject) subjects.add(subject);
+    }
+
+    // Batch get counts for all subjects (including sent emails)
+    const subjectCounts = new Map<string, number>();
+    if (subjects.size > 0) {
+        const placeholders = Array.from(subjects).map(() => '?').join(',');
+        const countResult = await db.query(`
+            SELECT normalized_subject, COUNT(*) as count 
+            FROM email_metadata 
+            WHERE normalized_subject IN (${placeholders})
+            GROUP BY normalized_subject
+        `, Array.from(subjects));
+
+        for (const row of (countResult.rows || [])) {
+            subjectCounts.set(row.normalized_subject, row.count);
+        }
+    }
+
     // Convert to ThreadGroup array
     const threads: ThreadGroup[] = [];
     for (const [threadId, emails] of threadMap) {
         emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         const latest = emails[0];
+        const normalizedSubj = latest.normalized_subject || normalizeSubject(latest.subject || '');
+
+        // Use batch count (includes sent emails), fallback to received-only count
+        const totalCount = subjectCounts.get(normalizedSubj) || emails.length;
 
         threads.push({
             threadId,
-            count: emails.length,
+            count: totalCount,
             latestEmail: {
                 messageId: latest.message_id,
                 uid: latest.uid,

@@ -28,6 +28,7 @@ router.get('/', async (req, res) => {
             AND date_archived IS NULL
             AND date IS NOT NULL
             AND date > '2000-01-01'
+            AND (mailbox IS NULL OR mailbox != 'Sent')
             ORDER BY date DESC
         `);
 
@@ -55,6 +56,7 @@ router.get('/', async (req, res) => {
                     AND date_archived IS NULL
                     AND date IS NOT NULL
                     AND date > '2000-01-01'
+                    AND (mailbox IS NULL OR mailbox != 'Sent')
                     ORDER BY date DESC
                 `);
 

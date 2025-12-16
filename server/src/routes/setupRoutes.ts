@@ -101,7 +101,8 @@ router.post('/save', async (req, res) => {
             password,
             startDate,
             displayName,
-            importStarred
+            importStarred,
+            sentFolderName
         } = req.body;
 
         if (!host || !port || !user || !password) {
@@ -121,11 +122,12 @@ router.post('/save', async (req, res) => {
         });
 
         // Save sync settings if provided
-        if (startDate || displayName || importStarred !== undefined) {
+        if (startDate || displayName || importStarred !== undefined || sentFolderName !== undefined) {
             await configService.saveSetting('sync', {
                 startDate: startDate || undefined,
                 displayName: displayName || undefined,
-                importStarred: importStarred !== undefined ? importStarred : true
+                importStarred: importStarred !== undefined ? importStarred : true,
+                sentFolderName: sentFolderName || undefined
             });
         }
 
@@ -360,6 +362,47 @@ router.post('/import', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to import data: ' + error.message
+        });
+    }
+});
+
+// Get sync settings (for Settings modal)
+router.get('/sync-settings', async (req, res) => {
+    try {
+        const syncSettings = configService.getSyncSettings();
+        res.json(syncSettings);
+    } catch (error: any) {
+        console.error('Error getting sync settings:', error);
+        res.status(500).json({ error: 'Failed to get sync settings' });
+    }
+});
+
+// Update sync settings (from Settings modal)
+router.put('/sync-settings', async (req, res) => {
+    try {
+        const { startDate, displayName, importStarred, sentFolderName } = req.body;
+
+        // Merge with existing settings
+        const currentSettings = configService.getSyncSettings();
+        const updatedSettings = {
+            ...currentSettings,
+            startDate: startDate !== undefined ? startDate : currentSettings.startDate,
+            displayName: displayName !== undefined ? displayName : currentSettings.displayName,
+            importStarred: importStarred !== undefined ? importStarred : currentSettings.importStarred,
+            sentFolderName: sentFolderName !== undefined ? sentFolderName : currentSettings.sentFolderName
+        };
+
+        await configService.saveSetting('sync', updatedSettings);
+
+        res.json({
+            success: true,
+            settings: updatedSettings
+        });
+    } catch (error: any) {
+        console.error('Error updating sync settings:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update sync settings: ' + error.message
         });
     }
 });

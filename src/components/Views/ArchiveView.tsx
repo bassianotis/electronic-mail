@@ -14,6 +14,7 @@ interface ArchiveViewProps {
 export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
     const { buckets, unarchiveThread, loadEmailBody, setCurrentView } = useMail();
     const [archivedEmails, setArchivedEmails] = useState<ArchivedEmail[]>([]);
+    const [serverThreadCounts, setServerThreadCounts] = useState<Map<string, number>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
     const [lastRestored, setLastRestored] = useState<{ email: Email; target: string } | null>(null);
 
@@ -62,6 +63,32 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
         };
 
         fetchArchive();
+
+        // Also fetch server-side thread counts (includes sent emails)
+        const fetchThreadCounts = async () => {
+            try {
+                const res = await fetch('/api/threads/archive');
+                if (res.ok) {
+                    const data = await res.json();
+                    const countMap = new Map<string, number>();
+                    for (const thread of data.threads || []) {
+                        // Key by normalized subject for lookup
+                        const normalizedSubj = thread.latestEmail?.subject
+                            ?.replace(/^(Re|Fwd|Fw|RE|FW|FWD):\s*/gi, '')
+                            .replace(/\s+/g, ' ')
+                            .trim()
+                            .toLowerCase() || '';
+                        if (normalizedSubj) {
+                            countMap.set(normalizedSubj, thread.count);
+                        }
+                    }
+                    setServerThreadCounts(countMap);
+                }
+            } catch (err) {
+                console.error('Error loading archive thread counts:', err);
+            }
+        };
+        fetchThreadCounts();
     }, []);
 
     // Background preview loading for archived emails
@@ -117,19 +144,21 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
 
         // For each thread, sort by date and return the latest email with thread count
         const result: Array<{ email: ArchivedEmail; threadCount: number }> = [];
-        for (const [, emails] of threadMap) {
+        for (const [key, emails] of threadMap) {
             // Sort by date descending
             emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            // Use server count if available (includes sent emails), fallback to local count
+            const serverCount = serverThreadCounts.get(key);
             result.push({
                 email: emails[0], // Latest email
-                threadCount: emails.length
+                threadCount: serverCount || emails.length
             });
         }
 
         // Sort threads by latest email date
         result.sort((a, b) => new Date(b.email.date).getTime() - new Date(a.email.date).getTime());
         return result;
-    }, [archivedEmails]);
+    }, [archivedEmails, serverThreadCounts]);
 
     return (
         <div style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-xl)', paddingBottom: '140px' }}>
