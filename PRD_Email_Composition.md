@@ -327,17 +327,19 @@ The following components need design:
 
 #### 1. Composition Panel
 - **Ideas**:
-  - 
+  - Composition takes place in a panel that sits to the right of email being replied to
+  - This allows the user to see the email they are replying to while composing
+  - If the thread has more than one email, the panels narrow to fit as many emails in the thread as possible
+  - There is a scrolling mechanism to scroll sidewise through past emails in the thread (like a chronology)
+  - When a user views an email and clicks reply, the email they're viewing slides to the left and the composition panel slides in from the left 
+  - This overlays the inbox similar to how viewing emails overlays the inbox
 - **Requirements**:
   - Contains all composition fields (To, CC, BCC, Subject, Body)
   - Supports attachments display
   - Shows draft save status
   - Integrated into existing mail client interface
 - **Open Questions**:
-  - How does the panel open? (slide in, expand in place, overlay?)
-  - Where is it positioned? (bottom, side, center?)
-  - Does it overlay the inbox or push content aside?
-  - Can user resize it?
+
 
 #### 2. Recipient Input Fields
 - **Ideas**:
