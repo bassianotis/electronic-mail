@@ -298,6 +298,7 @@ export function useEmails(): UseEmailsReturn {
         setIsLoading,
         setIsSyncing,
         fetchInboxEmails,
+        setEmails,
         archiveEmail,
         unarchiveEmail,
         bucketEmail,

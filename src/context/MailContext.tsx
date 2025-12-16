@@ -1,12 +1,14 @@
 /**
  * MailContext
- * Composes useEmails, useBuckets, and useRules hooks into a unified context
+ * Composes useEmails, useBuckets, useRules, and useThreads hooks into a unified context
  */
 import React, { createContext, useState, useEffect, type ReactNode } from 'react';
 import { type Email, type Bucket, type Rule } from '../store/mailStore';
+import type { ThreadGroup } from '../../shared/types/email';
 import { useEmails } from '../hooks/useEmails';
 import { useBuckets } from '../hooks/useBuckets';
 import { useRules } from '../hooks/useRules';
+import { useThreads } from '../hooks/useThreads';
 
 interface MailContextType {
     emails: Email[];
@@ -17,6 +19,7 @@ interface MailContextType {
     archiveEmail: (id: string, bucketId?: string) => void;
     unarchiveEmail: (email: Email, targetLocation: string) => void;
     bucketEmail: (id: string, bucketId: string) => void;
+    addEmailsToInbox: (emails: Email[]) => void;
     updateEmail: (id: string, updates: Partial<Email>) => void;
     loadEmailBody: (id: string, uid?: string) => Promise<any>;
     markAsRead: (id: string, uid?: string) => void;
@@ -29,6 +32,17 @@ interface MailContextType {
     setCurrentView: (view: 'inbox' | 'bucket' | 'archive') => void;
     currentView: 'inbox' | 'bucket' | 'archive';
     refreshData: () => Promise<void>;
+    // Thread operations
+    threads: ThreadGroup[];
+    threadsLoading: boolean;
+    fetchInboxThreads: () => Promise<ThreadGroup[]>;
+    fetchBucketThreads: (bucketId: string) => Promise<ThreadGroup[]>;
+    fetchArchiveThreads: () => Promise<ThreadGroup[]>;
+    bucketThread: (threadId: string, bucketId: string) => Promise<boolean>;
+    archiveThread: (threadId: string) => Promise<boolean>;
+    unarchiveThread: (threadId: string, targetLocation: string, email?: Email) => Promise<boolean>;
+    returnThreadToBucket: (threadId: string) => Promise<boolean>;
+    unbucketThread: (threadId: string) => Promise<boolean>;
 }
 
 const MailContext = createContext<MailContextType | undefined>(undefined);
@@ -40,6 +54,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const emailsHook = useEmails();
     const bucketsHook = useBuckets();
     const rulesHook = useRules();
+    const threadsHook = useThreads();
 
     // Initial data fetch
     const fetchData = async () => {
@@ -133,6 +148,13 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             archiveEmail,
             unarchiveEmail,
             bucketEmail,
+            addEmailsToInbox: (emails: Email[]) => {
+                emailsHook.setEmails(prev => {
+                    const existingIds = new Set(prev.map(e => e.id));
+                    const newEmails = emails.filter(e => !existingIds.has(e.id)).map(e => ({ ...e, bucketId: undefined }));
+                    return [...newEmails, ...prev];
+                });
+            },
             updateEmail: emailsHook.updateEmail,
             loadEmailBody: emailsHook.loadEmailBody,
             markAsRead: emailsHook.markAsRead,
@@ -144,7 +166,62 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             deleteRule: rulesHook.deleteRule,
             refreshData: fetchData,
             setCurrentView,
-            currentView
+            currentView,
+            // Thread operations
+            threads: threadsHook.threads,
+            threadsLoading: threadsHook.isLoading,
+            fetchInboxThreads: threadsHook.fetchInboxThreads,
+            fetchBucketThreads: threadsHook.fetchBucketThreads,
+            fetchArchiveThreads: threadsHook.fetchArchiveThreads,
+            fetchBucketThreads: threadsHook.fetchBucketThreads,
+            fetchArchiveThreads: threadsHook.fetchArchiveThreads,
+            bucketThread: async (threadId, bucketId) => {
+                // Helper to normalize subject for thread matching - duplicated from TriageInbox to avoid dependency
+                const normalizeSubject = (subject: string): string => {
+                    if (!subject) return '';
+                    return subject.replace(/^(Re|Fwd|Fw|RE|FW|FWD):\s*/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+                };
+
+                // Optimistic Update: Remove from emails list
+                const email = emailsHook.emails.find(e => e.id === threadId);
+                if (email) {
+                    const subject = normalizeSubject(email.subject);
+                    emailsHook.setEmails(prev => prev.filter(e => normalizeSubject(e.subject) !== subject));
+                } else {
+                    // Fallback: just remove by threadId if found
+                    emailsHook.setEmails(prev => prev.filter(e => e.id !== threadId));
+                }
+                return threadsHook.bucketThread(threadId, bucketId);
+            },
+            archiveThread: async (threadId) => {
+                const normalizeSubject = (subject: string): string => {
+                    if (!subject) return '';
+                    return subject.replace(/^(Re|Fwd|Fw|RE|FW|FWD):\s*/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+                };
+
+                // Optimistic Update
+                const email = emailsHook.emails.find(e => e.id === threadId);
+                if (email) {
+                    const subject = normalizeSubject(email.subject);
+                    emailsHook.setEmails(prev => prev.filter(e => normalizeSubject(e.subject) !== subject));
+                } else {
+                    emailsHook.setEmails(prev => prev.filter(e => e.id !== threadId));
+                }
+                return threadsHook.archiveThread(threadId);
+            },
+            unarchiveThread: async (threadId, targetLocation, email) => {
+                // Optimistic Update: If moving to inbox and we have the email, add it to inbox
+                if (targetLocation === 'inbox' && email) {
+                    emailsHook.setEmails(prev => {
+                        // Check if already exists to avoid duplicates
+                        if (prev.some(e => e.id === email.id)) return prev;
+                        return [{ ...email, bucketId: undefined }, ...prev];
+                    });
+                }
+                return threadsHook.unarchiveThread(threadId, targetLocation);
+            },
+            returnThreadToBucket: threadsHook.returnThreadToBucket,
+            unbucketThread: threadsHook.unbucketThread
         }}>
             {children}
         </MailContext.Provider>

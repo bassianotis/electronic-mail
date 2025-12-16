@@ -12,38 +12,63 @@ const router = Router();
 // GET /api/archive - Fetch Archived Emails
 router.get('/', async (req, res) => {
     try {
-        const emails = await imapService.fetchArchivedEmails();
+        console.log('[ARCHIVE] Request received');
 
-        // Fetch metadata for these emails
-        const messageIds = emails.map(e => e.messageId).filter(Boolean);
-        let metadataMap = new Map();
+        // 1. Fetch from DB (Cache First)
+        // We include emails that have a date_archived timestamp OR are in the 'Archives' folder (if we tracked that in mailbox column, but currently date_archived is the key)
+        const dbResult = await db.query(`
+            SELECT * FROM email_metadata 
+            WHERE (date_archived IS NOT NULL)
+            ORDER BY date DESC
+        `);
 
-        if (messageIds.length > 0) {
-            const placeholders = messageIds.map(() => '?').join(',');
-            const result = await db.query(`
-                SELECT * FROM email_metadata WHERE message_id IN(${placeholders})
-            `, messageIds);
+        const cachedEmails = (dbResult.rows || []).map((row: any) => ({
+            uid: row.uid,
+            messageId: row.message_id,
+            subject: row.subject,
+            from: [{ name: row.sender, address: row.sender_address }],
+            date: row.date,
+            preview: row.preview || '',
+            note: row.notes,
+            dueDate: row.due_date,
+            originalBucket: row.original_bucket,
+            dateArchived: row.date_archived
+        }));
 
-            const metadata = result.rows || [];
-            metadata.forEach((m: any) => metadataMap.set(m.message_id, m));
-        }
+        res.json(cachedEmails);
 
-        // Merge metadata
-        const enrichedEmails = emails.map(email => {
-            const meta = metadataMap.get(email.messageId);
-            return {
-                ...email,
-                note: meta?.notes,
-                dueDate: meta?.due_date,
-                originalBucket: meta?.original_bucket,
-                preview: meta?.preview || ''
-            };
-        });
+        // 2. Background Sync
+        (async () => {
+            try {
+                const imapEmails = await imapService.fetchArchivedEmails();
+                console.log(`[ARCHIVE] Background sync found ${imapEmails.length} emails`);
 
-        const debugLog = enrichedEmails.map(e => ({ id: e.messageId, originalBucket: e.originalBucket }));
-        console.log('[BACKEND] Fetching archived emails. Samples:', JSON.stringify(debugLog.slice(0, 3)));
+                // Upsert into DB
+                for (const email of imapEmails) {
+                    const senderName = email.from?.[0]?.name || email.from?.[0]?.address || 'Unknown';
+                    const senderAddress = email.from?.[0]?.address || '';
 
-        res.json(enrichedEmails);
+                    await db.query(`
+                        INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, uid, date_archived)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(message_id) DO UPDATE SET
+                             date_archived = COALESCE(email_metadata.date_archived, excluded.date_archived),
+                             uid = excluded.uid
+                    `, [
+                        email.messageId,
+                        email.subject,
+                        senderName,
+                        senderAddress,
+                        email.date instanceof Date ? email.date.toISOString() : new Date().toISOString(),
+                        email.uid,
+                        new Date().toISOString() // Default archive date if new
+                    ]);
+                }
+            } catch (err) {
+                console.error('[ARCHIVE] Background sync failed:', err);
+            }
+        })();
+
     } catch (err) {
         console.error('Error fetching archived emails:', err);
         res.status(500).json({ error: 'Failed to fetch archived emails' });

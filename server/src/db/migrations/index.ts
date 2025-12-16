@@ -128,6 +128,29 @@ const migrations: Migration[] = [
             `);
             console.log(`✓ Cleaned up ${result.changes || 0} ghost/malformed email entries`);
         }
+    },
+    {
+        version: 10,
+        name: 'threading_columns',
+        up: async (db) => {
+            // Threading columns for grouping emails into conversations
+            await addColumnIfNotExists(db, 'email_metadata', 'thread_id', 'TEXT');
+            await addColumnIfNotExists(db, 'email_metadata', 'in_reply_to', 'TEXT');
+
+            // 'references' is a reserved keyword in SQLite, use 'refs'
+            await addColumnIfNotExists(db, 'email_metadata', 'refs', 'TEXT');
+            await addColumnIfNotExists(db, 'email_metadata', 'normalized_subject', 'TEXT');
+
+            // Mailbox tracking (INBOX, Sent, Drafts, Archives)
+            await addColumnIfNotExists(db, 'email_metadata', 'mailbox', 'TEXT');
+
+            // Create index on thread_id for fast grouping queries
+            await db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_email_thread_id ON email_metadata(thread_id);
+            `);
+
+            console.log('✓ Added threading columns and index');
+        }
     }
 ];
 

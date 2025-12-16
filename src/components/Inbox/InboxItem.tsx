@@ -14,9 +14,10 @@ interface InboxItemProps {
     onBucket: (emailId: string, bucketId: string) => void;
     onDone: (emailId: string) => void;
     onClick: () => void;
+    threadCount?: number;
 }
 
-export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucket, onDone, onClick }) => {
+export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucket, onDone, onClick, threadCount }) => {
     const [isHovered, setIsHovered] = React.useState(false);
     const itemRef = useRef<HTMLDivElement>(null);
     const { } = useAnimation();
@@ -227,7 +228,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                     scale: 0.4,
                     opacity: isOverBucket ? 0.15 : 0.5,
                     borderRadius: '24px',
-                    zIndex: 300,
+                    zIndex: 9999,
                     boxShadow: 'var(--shadow-floating)',
                     cursor: 'grabbing',
                     transition: { opacity: { duration: 0.15 } }
@@ -303,6 +304,20 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                 >
                                     {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
                                 </span>
+                                {threadCount && threadCount > 1 && (
+                                    <span style={{
+                                        backgroundColor: '#3b82f6',
+                                        color: '#fff',
+                                        fontSize: '10px',
+                                        fontWeight: 600,
+                                        padding: '2px 6px',
+                                        borderRadius: '10px',
+                                        minWidth: '18px',
+                                        textAlign: 'center'
+                                    }}>
+                                        {threadCount}
+                                    </span>
+                                )}
                                 {!isExpanded && <span>•</span>}
                                 <span>{email.date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
                             </div>

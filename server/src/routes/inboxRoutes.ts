@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { imapService } from '../services/imapService';
 import { db } from '../services/dbService';
 import { configService } from '../services/configService';
+import { threadService } from '../services/threadService';
 
 const router = Router();
 
@@ -77,6 +78,11 @@ router.get('/', async (req, res) => {
         }
 
         res.json(dbEmails);
+
+        // Background thread consolidation - pull fragmented threads back together
+        threadService.autoConsolidateThreads().catch(err =>
+            console.error('[INBOX] Background consolidation failed:', err)
+        );
 
     } catch (err) {
         console.error('Error fetching inbox:', err);

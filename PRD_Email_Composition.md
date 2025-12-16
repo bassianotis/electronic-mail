@@ -150,28 +150,67 @@ Enable users to compose and send emails with core email functionality, including
 ### 10. Threading
 **Priority**: P0 (Must Have)
 
-- [ ] Group related emails into threads
-- [ ] Use lenient threading: In-Reply-To/References headers PLUS subject line matching
-- [ ] Normalize subjects (ignore "Re:", "Fwd:", etc.) when matching
-- [ ] Display thread count in inbox
-- [ ] Expand/collapse thread view
-- [ ] Show all messages in thread chronologically
-- [ ] Navigate between messages in a thread
-- [ ] Sent emails appear in their respective threads
+**Thread Identification (Gmail-style quality):**
+- [ ] Fetch and store `References` and `In-Reply-To` headers from IMAP
+- [ ] Use combination approach: prioritize headers, fall back to normalized subject matching
+- [ ] Normalize subjects by stripping "Re:", "Fwd:", "RE:", "FW:", etc.
+- [ ] Compute `thread_id` on ingest: match References/In-Reply-To first, then normalized subject
+- [ ] When new email arrives in existing thread, auto-assign to same bucket
 
-### 11. Sent Mail Storage
+**Thread Display:**
+- [ ] Collapsed view: Show single row with thread count badge
+- [ ] Use most recent email's subject, sender, and preview for collapsed display
+- [ ] Thread count includes ALL emails in thread (received + sent) that are stored locally
+- [ ] Expand to see individual messages in chronological order
+- [ ] Gmail-style: Each message is viewed individually, not showing prior messages inline
+
+**Thread Operations:**
+- [ ] Drag/drop operates on entire thread (moves all received emails)
+- [ ] Sent emails display in thread but are NOT moved during bucket/archive operations
+- [ ] All received emails in a thread share the same bucket_id
+- [ ] Archived threads show sent emails inline in archive view
+
+**Thread-Level Archiving (Key Behavior):**
+- [ ] **No local archive storage**: Archived emails stay on IMAP only (archive is too large to cache locally)
+- [ ] **Threads move together**: When archiving, ALL received emails in the thread are archived together
+- [ ] **Thread resurrection**: When a new reply arrives to an archived thread:
+  - Sync detects new email with matching thread_id/references
+  - Entire thread moves out of archive back to inbox
+  - All emails in thread become visible again
+  - Original bucket assignment is preserved for "Return to [Bucket]" action
+- [ ] Legacy data: Partially-archived threads (from before threading) will only show non-archived emails; this is acceptable for migration period
+
+**New Email Arrival in Bucketed Threads:**
+- [ ] When new email arrives in a thread that's already in a bucket, thread re-appears in Inbox
+- [ ] Inbox is the SOLE place to see new arrivals - no bucket notifications needed
+- [ ] Quick action: "Return to [Bucket Name]" (emphasized over Archive)
+- [ ] This ensures user never misses new emails by having to check multiple buckets
+
+### 11. Sent Mail Sync (New Functionality)
 **Priority**: P0 (Must Have)
 
-- [ ] Store sent emails in IMAP Sent folder
+**Syncing Sent Emails:**
+- [ ] Sync sent emails from IMAP Sent folder to local database
+- [ ] Fetch threading headers (References, In-Reply-To) for sent emails
+- [ ] Associate sent emails with threads using same algorithm as received emails
+- [ ] Store with `is_sent = true` or `mailbox = 'Sent'` flag
+
+**Storage:**
 - [ ] Store sent emails in local `email_metadata` table (same as inbox/bucketed emails)
-- [ ] Add way to distinguish sent emails from received emails (e.g., `mailbox` column or `is_sent` flag)
-- [ ] Associate sent emails with threads
+- [ ] sent emails use same schema but are distinguished by mailbox/is_sent flag
+- [ ] Sent emails are NOT assigned to buckets (they remain in Sent folder)
+
+### 12. Sending New Mail
+**Priority**: P0 (Must Have)
+
+- [ ] Send email via SMTP
+- [ ] Store sent email in IMAP Sent folder after successful send
 - [ ] Show sent timestamp
 - [ ] Show delivery status (sent, failed, pending)
 - [ ] Retry failed sends
 - [ ] Notification for send failures
 
-### 12. Send Actions
+### 13. Send Actions
 **Priority**: P0 (Must Have)
 
 - [ ] Send email immediately
@@ -239,6 +278,14 @@ Enable users to compose and send emails with core email functionality, including
 - Sent email schema (extends existing email schema)
 - Thread grouping logic (lenient matching)
 - Attachment metadata (MIME parts in IMAP draft)
+
+**New columns for `email_metadata` table:**
+- `thread_id` TEXT - Computed thread identifier
+- `in_reply_to` TEXT - Message-ID this email replies to (from IMAP header)
+- `references` TEXT - Comma-separated list of Message-IDs in thread chain
+- `normalized_subject` TEXT - Subject with Re:/Fwd: stripped for lenient matching
+- `mailbox` TEXT - 'INBOX', 'Sent', 'Drafts', 'Archives' etc.
+- `is_read` INTEGER - 0/1 for tracking new email notifications in buckets
 
 ---
 
@@ -359,17 +406,22 @@ The following components need design:
 
 #### 7. Thread View
 - **Ideas**:
-  - 
+  - Emails always display within their context in the thread
+- **Decisions Made**:
+  - Gmail-style individual message viewing (not inline stacked)
+  - Most recent email's subject/sender/preview shown in collapsed thread
+  - Thread count shows ALL emails (received + sent)
+  - Sent emails visible in thread but not moved on bucket/archive
 - **Requirements**:
-  - Display related emails grouped by conversation
-  - Show thread count
-  - Expand/collapse thread
+  - Collapsed: Single row with thread count badge
+  - Expanded: List of individual messages, each viewable separately
   - Include sent emails in appropriate threads
-  - Chronological order
+  - Chronological order within thread
+  - Visual indicator distinguishing sent vs received emails
 - **Open Questions**:
-  - Gmail-style (stacked cards), nested indentation, or flat list with indicators?
-  - How to show when sent email is part of thread?
-  - Thread summary vs full messages?
+  - Visual design for collapsed thread row (badge placement, participant avatars?)
+  - Animation for expand/collapse
+  - How to indicate "you replied" in collapsed view?
 
 ### Design Decisions Log
 
@@ -378,7 +430,11 @@ The following components need design:
 | Date | Decision | Rationale | Status |
 |------|----------|-----------|--------|
 | 2025-12-08 | Composition UI is panel-based (not modal/full-page) | Per user feedback, mentioned "composition panel" | Confirmed |
-| - | - | - | - |
+| 2025-12-10 | Gmail-style threading: headers + subject fallback | User wants Gmail-quality experience | Confirmed |
+| 2025-12-10 | Thread display shows most recent email's info | Consistent with user expectations | Confirmed |
+| 2025-12-10 | Thread count includes received + sent | User confirmed | Confirmed |
+| 2025-12-10 | Individual message view (not inline thread) | Like Gmail - view one message at a time | Confirmed |
+| 2025-12-10 | New emails in bucketed threads return to Inbox | Inbox is sole source of truth for new arrivals | Confirmed |
 
 ### Design Iterations
 
@@ -393,9 +449,9 @@ The following components need design:
 ## Open Questions
 
 1. **Composition UI**: Modal, sidebar, full-page, or inline? (User has opinions to share later)
-2. **Thread Display**: How should threaded conversations be displayed in the inbox?
-3. **Retry Logic**: What's the maximum retry attempts for failed IMAP saves before giving up?
-4. **Background Sync Indicator**: How prominent should the "syncing..." indicator be?
+2. **Retry Logic**: What's the maximum retry attempts for failed IMAP saves before giving up?
+3. **Background Sync Indicator**: How prominent should the "syncing..." indicator be?
+4. **Sent Email Sync Frequency**: How often should we sync sent emails from IMAP?
 
 ---
 

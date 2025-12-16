@@ -10,13 +10,15 @@ interface EmailCardProps {
     email: Email;
     onClick: () => void;
     onBucket: (emailId: string, bucketId: string) => void;
+    threadCount?: number;
 }
 
-export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }) => {
+export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket, threadCount }) => {
     const { setHoveredBucketId, setIsDragging } = useDragDrop();
     const { buckets } = useMail();
     const isDraggingRef = React.useRef(false);
     const [showSenderEmail, setShowSenderEmail] = React.useState(false);
+    const [isDropped, setIsDropped] = React.useState(false);
 
     const handleDragStart = () => {
         isDraggingRef.current = true;
@@ -98,6 +100,7 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }
                 dropPoint.y <= rect.bottom
             ) {
                 // Archive the email (handled by BucketGallery)
+                setIsDropped(true); // Hide immediately
                 onBucket(email.id, 'archive');
                 setTimeout(() => {
                     isDraggingRef.current = false;
@@ -141,6 +144,7 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }
         }
 
         if (droppedBucketId) {
+            setIsDropped(true); // Hide immediately
             onBucket(email.id, droppedBucketId);
         }
 
@@ -165,11 +169,13 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }
             onDragStart={handleDragStart}
             onDrag={handleDrag}
             onDragEnd={handleDragEnd}
+            animate={{ opacity: isDropped ? 0 : 1 }}
+            transition={{ duration: isDropped ? 0.1 : 0.2 }}
             whileDrag={{
                 scale: 0.6,
                 opacity: 0.9,
                 borderRadius: '24px',
-                zIndex: 300,
+                zIndex: 9999,
                 boxShadow: 'var(--shadow-floating)',
                 cursor: 'grabbing'
             }}
@@ -200,7 +206,23 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket }
                 >
                     {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
                 </span>
-                <span>{email.date.toLocaleDateString()}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                    {threadCount && threadCount > 1 && (
+                        <span style={{
+                            backgroundColor: '#3b82f6',
+                            color: '#fff',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            minWidth: '18px',
+                            textAlign: 'center'
+                        }}>
+                            {threadCount}
+                        </span>
+                    )}
+                    <span>{email.date.toLocaleDateString()}</span>
+                </div>
             </div>
 
             <h3 style={{

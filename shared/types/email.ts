@@ -35,6 +35,10 @@ export interface Email {
     dateArchived?: string;
     /** The ID of the bucket this email belonged to before archiving */
     originalBucket?: string;
+    /** Thread ID for grouping related emails */
+    threadId?: string;
+    /** Number of emails in this thread (for display) */
+    threadCount?: number;
 }
 
 /**
@@ -67,6 +71,8 @@ export interface ApiEmailResponse {
     date_archived?: string;
     bucketId?: string;
     attachments?: Array<{ filename: string; contentType: string; size: number }>;
+    threadId?: string;
+    threadCount?: number;
 }
 
 /**
@@ -76,3 +82,49 @@ export interface ArchivedEmail extends Email {
     dateArchived?: string;
     originalBucket?: string;
 }
+
+/**
+ * Thread group for displaying related emails as a single unit
+ */
+export interface ThreadGroup {
+    /** Unique thread identifier */
+    threadId: string;
+    /** Total number of emails in thread */
+    count: number;
+    /** Most recent email (used for display in collapsed view) */
+    latestEmail: {
+        messageId: string;
+        uid?: number;
+        subject: string;
+        sender: string;
+        senderAddress?: string;
+        date: string;
+        preview: string;
+        body?: string;
+    };
+    /** True if thread has new unread email */
+    hasNewEmail?: boolean;
+    /** Original bucket ID for "Return to [Bucket]" action */
+    originalBucketId?: string;
+}
+
+/**
+ * API response for ThreadGroup
+ */
+export interface ApiThreadGroupResponse {
+    threadId: string;
+    count: number;
+    latestEmail: {
+        messageId: string;
+        uid?: number;
+        subject: string;
+        sender: string;
+        senderAddress?: string;
+        date: string;
+        preview: string;
+        body?: string;
+    };
+    hasNewEmail?: boolean;
+    originalBucketId?: string;
+}
+

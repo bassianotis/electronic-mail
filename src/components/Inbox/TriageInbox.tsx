@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { InboxItem } from './InboxItem';
 import { type Email } from '../../store/mailStore';
@@ -11,24 +11,66 @@ interface TriageInboxProps {
 }
 
 export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
-    const { emails, bucketEmail, archiveEmail, buckets, setCurrentView, isLoading, isSyncing } = useMail();
+    const { emails, buckets, setCurrentView, isLoading, isSyncing, fetchInboxThreads, bucketThread, archiveThread } = useMail();
     const [lastBucketed, setLastBucketed] = useState<{ email: Email; bucketId: string } | null>(null);
     const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
 
     // Set current view to inbox when this component mounts
-    React.useEffect(() => {
+    useEffect(() => {
         setCurrentView('inbox');
-    }, [setCurrentView]);
+        // Fetch threads for thread count data
+        fetchInboxThreads();
+    }, [setCurrentView, fetchInboxThreads]);
+
 
     // Filter for Inbox (items without a bucketId) and sort by date descending
-    const inboxEmails = emails.filter(e => !e.bucketId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const allInboxEmails = emails.filter(e => !e.bucketId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const handleBucket = (emailId: string, bucketId: string) => {
+    // Helper to normalize subject for thread grouping
+    const normalizeSubject = (subject: string): string => {
+        if (!subject) return '';
+        return subject
+            .replace(/^(Re|Fwd|Fw|RE|FW|FWD):\s*/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+    };
+
+    // Deduplicate emails by thread AND compute counts - only show one email per thread (the latest)
+    const { inboxEmails, clientThreadCounts } = useMemo(() => {
+        const threadMap = new Map<string, Email[]>();
+
+        for (const email of allInboxEmails) {
+            const normalizedSubj = normalizeSubject(email.subject);
+            const key = normalizedSubj || email.id; // Use id as fallback for empty subjects
+
+            if (!threadMap.has(key)) {
+                threadMap.set(key, []);
+            }
+            threadMap.get(key)!.push(email);
+        }
+
+        // Build deduplicated list (latest email per thread) and counts
+        const emails: Email[] = [];
+        const counts = new Map<string, number>();
+
+        for (const [_, threadEmails] of threadMap) {
+            const latest = threadEmails[0]; // Already sorted by date desc
+            emails.push(latest);
+            counts.set(latest.id, threadEmails.length);
+        }
+
+        return { inboxEmails: emails, clientThreadCounts: counts };
+    }, [allInboxEmails]);
+
+    const handleBucket = async (emailId: string, bucketId: string) => {
         const email = inboxEmails.find(e => e.id === emailId);
         if (!email) return;
 
-        // 1. Update Global State
-        bucketEmail(emailId, bucketId);
+        // 1. Update Global State (Atomic Thread Operation)
+        // Pass emailId - backend resolves thread by subject/thread_id
+        await bucketThread(emailId, bucketId);
+        // No refreshData - optimistic update handles UI
 
         // 2. Show Toast
         setLastBucketed({ email, bucketId });
@@ -39,8 +81,10 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
         }, 4000);
     };
 
-    const handleDone = (emailId: string) => {
-        archiveEmail(emailId);
+    const handleDone = async (emailId: string) => {
+        // Atomic Thread Archive
+        await archiveThread(emailId);
+        // No refreshData - optimistic update handles UI
     };
 
     const handleToggleExpand = (email: Email) => {
@@ -99,6 +143,7 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail }) => {
                             onBucket={handleBucket}
                             onDone={handleDone}
                             onClick={() => handleToggleExpand(email)}
+                            threadCount={clientThreadCounts.get(email.id)}
                         />
                     ))}
                 </AnimatePresence>

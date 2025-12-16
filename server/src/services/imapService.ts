@@ -647,26 +647,60 @@ export const imapService = {
             await client.mailboxCreate('Archives');
         }
 
-        const lock = await client.getMailboxLock('INBOX');
+        // Check if email is ALREADY in Archives folder
         try {
-            await client.mailboxOpen('INBOX');
-
-            // Search for email by Message-ID
-            const searchResult = await client.search({ header: { 'message-id': messageId } });
-            if (!searchResult || searchResult.length === 0) {
-                throw new Error(`Email with Message-ID ${messageId} not found`);
+            const archiveLock = await client.getMailboxLock('Archives');
+            try {
+                await client.mailboxOpen('Archives');
+                const archiveSearch = await client.search({ header: { 'message-id': messageId } });
+                if (archiveSearch && archiveSearch.length > 0) {
+                    console.log(`[archiveEmail] Email ${messageId} already in Archives, skipping`);
+                    return; // Already archived, nothing to do
+                }
+            } finally {
+                archiveLock.release();
             }
-            const seqNum = searchResult[0];
+        } catch (err) {
+            console.log(`[archiveEmail] Could not check Archives folder: ${err}`);
+        }
 
-            // Add $archived tag first
-            await client.messageFlagsAdd(seqNum, ['$archived']);
+        // List of folders to search, in order of priority
+        const foldersToSearch = ['INBOX', '$label1', '$label2', '$label3', '$label4', '$label5'];
 
-            // Move to Archives folder (this will remove from INBOX)
-            console.log(`Moving email ${messageId} to Archives folder...`);
-            await client.messageMove(seqNum, 'Archives');
-            console.log(`Email ${messageId} archived successfully`);
-        } finally {
-            lock.release();
+        let foundInFolder: string | null = null;
+
+        // Search each folder until we find the email
+        for (const folder of foldersToSearch) {
+            try {
+                const lock = await client.getMailboxLock(folder);
+                try {
+                    await client.mailboxOpen(folder);
+                    const searchResult = await client.search({ header: { 'message-id': messageId } });
+                    if (searchResult && searchResult.length > 0) {
+                        foundInFolder = folder;
+                        const seqNum = searchResult[0];
+                        console.log(`[archiveEmail] Found email ${messageId} in folder ${folder}`);
+
+                        // Add $archived tag
+                        await client.messageFlagsAdd(seqNum, ['$archived']);
+
+                        // Move to Archives folder
+                        console.log(`Moving email ${messageId} from ${folder} to Archives folder...`);
+                        await client.messageMove(seqNum, 'Archives');
+                        console.log(`Email ${messageId} archived successfully from ${folder}`);
+                        break;
+                    }
+                } finally {
+                    lock.release();
+                }
+            } catch (err) {
+                // Folder doesn't exist or other error, continue to next
+                // Don't log for label folders as they may not exist
+            }
+        }
+
+        if (!foundInFolder) {
+            throw new Error(`Email with Message-ID ${messageId} not found in any folder`);
         }
     },
 

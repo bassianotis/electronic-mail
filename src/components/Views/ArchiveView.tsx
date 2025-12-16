@@ -12,7 +12,7 @@ interface ArchiveViewProps {
 }
 
 export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
-    const { buckets, unarchiveEmail, loadEmailBody, setCurrentView } = useMail();
+    const { buckets, unarchiveThread, loadEmailBody, setCurrentView } = useMail();
     const [archivedEmails, setArchivedEmails] = useState<ArchivedEmail[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [lastRestored, setLastRestored] = useState<{ email: Email; target: string } | null>(null);
@@ -95,21 +95,52 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
         return bucket?.label || bucketId;
     };
 
+    // Helper to normalize subject for thread grouping
+    const normalizeSubject = (subject: string): string => {
+        if (!subject) return '';
+        return subject.replace(/^(Re|Fwd|Fw|RE|FW|FWD):\s*/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    };
+
+    // Group emails by normalized subject (thread grouping)
+    const groupedEmails = React.useMemo(() => {
+        const threadMap = new Map<string, ArchivedEmail[]>();
+
+        for (const email of archivedEmails) {
+            const normalizedSubj = normalizeSubject(email.subject);
+            const key = normalizedSubj || email.id; // Use id as fallback for empty subjects
+
+            if (!threadMap.has(key)) {
+                threadMap.set(key, []);
+            }
+            threadMap.get(key)!.push(email);
+        }
+
+        // For each thread, sort by date and return the latest email with thread count
+        const result: Array<{ email: ArchivedEmail; threadCount: number }> = [];
+        for (const [, emails] of threadMap) {
+            // Sort by date descending
+            emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            result.push({
+                email: emails[0], // Latest email
+                threadCount: emails.length
+            });
+        }
+
+        // Sort threads by latest email date
+        result.sort((a, b) => new Date(b.email.date).getTime() - new Date(a.email.date).getTime());
+        return result;
+    }, [archivedEmails]);
+
     return (
         <div style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-xl)', paddingBottom: '140px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-                    <Archive size={28} color="var(--color-text-muted)" />
-                    <h2 style={{
-                        fontSize: 'var(--font-size-2xl)',
-                        fontWeight: 700,
-                        color: 'var(--color-text-main)'
-                    }}>
+                <div>
+                    <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 800, marginBottom: 'var(--space-xs)' }}>
                         Archive
                     </h2>
                 </div>
                 <span className="text-muted" style={{ fontWeight: 500 }}>
-                    {archivedEmails.length} items
+                    {groupedEmails.length} threads ({archivedEmails.length} emails)
                 </span>
             </div>
 
@@ -133,14 +164,21 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
                     <AnimatePresence>
-                        {archivedEmails.map((email) => (
+                        {groupedEmails.map(({ email, threadCount }) => (
                             <ArchiveItem
                                 key={email.id}
                                 email={email}
+                                threadCount={threadCount}
                                 onClick={() => onSelectEmail(email)}
                                 onUnarchive={(email, targetLocation) => {
-                                    unarchiveEmail(email, targetLocation);
-                                    setArchivedEmails(prev => prev.filter(e => e.id !== email.id));
+                                    // Optimistic update FIRST: Remove ALL emails in this thread from view immediately
+                                    const subject = normalizeSubject(email.subject);
+                                    setArchivedEmails(prev => prev.filter(e => normalizeSubject(e.subject) !== subject));
+
+                                    // Then call server (fire-and-forget)
+                                    unarchiveThread(email.id, targetLocation, email)
+                                        .catch(err => console.error('Unarchive failed:', err));
+                                    // No refreshData - optimistic update handles UI
                                 }}
                                 getBucketLabel={getBucketLabel}
                             />
@@ -219,12 +257,14 @@ interface ArchiveItemProps {
     onClick: () => void;
     onUnarchive: (email: Email, targetLocation: string) => void;
     getBucketLabel: (bucketId?: string) => string;
+    threadCount?: number;
 }
 
-const ArchiveItem: React.FC<ArchiveItemProps> = ({ email, onClick, onUnarchive, getBucketLabel }) => {
+const ArchiveItem: React.FC<ArchiveItemProps> = ({ email, onClick, onUnarchive, getBucketLabel, threadCount }) => {
     const { setHoveredBucketId, setIsDragging } = useDragDrop();
     const { buckets } = useMail();
     const [showSenderEmail, setShowSenderEmail] = useState(false);
+    const [isDropped, setIsDropped] = useState(false);
     const isDraggingRef = React.useRef(false);
 
     const handleDragStart = () => {
@@ -314,6 +354,7 @@ const ArchiveItem: React.FC<ArchiveItemProps> = ({ email, onClick, onUnarchive, 
         }
 
         if (targetLocation) {
+            setIsDropped(true); // Hide immediately to prevent ghost animation
             onUnarchive(email, targetLocation);
         }
 
@@ -342,14 +383,15 @@ const ArchiveItem: React.FC<ArchiveItemProps> = ({ email, onClick, onUnarchive, 
                 scale: 0.6,
                 opacity: 0.9,
                 borderRadius: '24px',
-                zIndex: 300,
+                zIndex: 9999,
                 boxShadow: 'var(--shadow-floating)',
                 cursor: 'grabbing'
             }}
             onClick={handleClick}
             whileHover={{ y: -2, boxShadow: 'var(--shadow-sm)' }}
             initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            animate={{ opacity: isDropped ? 0 : 1, y: 0 }}
+            transition={{ duration: isDropped ? 0.05 : 0.2 }}
             exit={{ opacity: 0, height: 0 }}
             style={{
                 backgroundColor: '#fff',
@@ -381,6 +423,23 @@ const ArchiveItem: React.FC<ArchiveItemProps> = ({ email, onClick, onUnarchive, 
                         >
                             {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
                         </span>
+                        {threadCount && threadCount > 1 && (
+                            <span style={{
+                                backgroundColor: '#3b82f6',
+                                color: '#fff',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                padding: '2px 6px',
+                                borderRadius: '12px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                height: '16px',
+                                minWidth: '16px'
+                            }}>
+                                {threadCount}
+                            </span>
+                        )}
                         <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
                             •
                         </span>
