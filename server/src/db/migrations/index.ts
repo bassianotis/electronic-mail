@@ -151,6 +151,42 @@ const migrations: Migration[] = [
 
             console.log('✓ Added threading columns and index');
         }
+    },
+    {
+        version: 11,
+        name: 'drafts_table',
+        up: async (db) => {
+            await db.exec(`
+                CREATE TABLE IF NOT EXISTS drafts (
+                    id TEXT PRIMARY KEY,
+                    "to" TEXT,
+                    cc TEXT,
+                    bcc TEXT,
+                    subject TEXT,
+                    body TEXT,
+                    attachments TEXT, -- JSON string of file metadata
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+            `);
+            console.log('✓ Created drafts table');
+        }
+    },
+    {
+        version: 12,
+        name: 'drafts_imap_uid',
+        up: async (db) => {
+            await addColumnIfNotExists(db, 'drafts', 'imap_uid', 'INTEGER');
+            console.log('✓ Added imap_uid to drafts table');
+        }
+    },
+    {
+        version: 13,
+        name: 'drafts_in_reply_to',
+        up: async (db) => {
+            await addColumnIfNotExists(db, 'drafts', 'in_reply_to', 'TEXT');
+            console.log('✓ Added in_reply_to to drafts table');
+        }
     }
 ];
 

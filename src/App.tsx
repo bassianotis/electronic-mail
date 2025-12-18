@@ -4,7 +4,7 @@ import { TriageInbox } from './components/Inbox/TriageInbox';
 import { BucketGallery } from './components/Views/BucketGallery';
 import { ArchiveView } from './components/Views/ArchiveView';
 import { EmailOverlay } from './components/Views/EmailOverlay';
-import { ThreadCardView } from './components/Views/ThreadCardView';
+import { LibraryCardView } from './components/Views/LibraryCardView';
 import { SearchOverlay } from './components/Views/SearchOverlay';
 import { SetupWizard } from './components/Setup/SetupWizard';
 import { OnboardingModal } from './components/Modals/OnboardingModal';
@@ -138,9 +138,9 @@ function AppContent() {
                 onClose={handleOnboardingClose}
             />
 
-            {/* Thread Card View - for bucket emails (shows all emails as cards) */}
+            {/* Library Card View - for bucket emails (Z-depth card stack) */}
             {selectedEmail && isInBucket && (
-                <ThreadCardView
+                <LibraryCardView
                     email={selectedEmail}
                     onClose={() => setSelectedEmail(null)}
                 />

@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import type { Email } from '../../store/mailStore';
-import { Clock, Edit3 } from 'lucide-react';
+import { Clock, Edit3, Pencil } from 'lucide-react';
 
 import { useDragDrop } from '../../context/DragDropContext';
 import { useMail } from '../../context/MailContext';
@@ -11,9 +11,10 @@ interface EmailCardProps {
     onClick: () => void;
     onBucket: (emailId: string, bucketId: string) => void;
     threadCount?: number;
+    hasDraft?: boolean;
 }
 
-export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket, threadCount }) => {
+export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket, threadCount, hasDraft }) => {
     const { setHoveredBucketId, setIsDragging } = useDragDrop();
     const { buckets } = useMail();
     const isDraggingRef = React.useRef(false);
@@ -207,6 +208,22 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, onClick, onBucket, 
                     {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                    {hasDraft && (
+                        <span style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: '10px'
+                        }}>
+                            <Pencil size={10} />
+                            Draft
+                        </span>
+                    )}
                     {threadCount && threadCount > 1 && (
                         <span style={{
                             backgroundColor: '#3b82f6',

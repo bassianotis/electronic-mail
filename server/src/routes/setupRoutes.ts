@@ -237,7 +237,7 @@ router.post('/logout', async (req, res) => {
         // Also try to disconnect IMAP if possible
         try {
             const { imapService } = await import('../services/imapService');
-            await imapService.disconnectImap();
+            await imapService.disconnect();
         } catch (e) {
             console.error('Error disconnecting IMAP:', e);
         }

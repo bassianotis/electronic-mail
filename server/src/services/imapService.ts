@@ -2,6 +2,16 @@ import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { configService } from './configService';
 import { db } from './dbService';
+import nodemailer from 'nodemailer';
+
+export interface DraftData {
+    to: string[];
+    cc: string[];
+    bcc: string[];
+    subject: string;
+    body: string;
+    attachments: any[];
+}
 
 // Helper to normalize subject for thread matching (same logic as threadService)
 const normalizeSubject = (subject: string): string => {
@@ -1120,11 +1130,29 @@ export const imapService = {
         }
     },
 
+    // Helper to resolve special folders (Drafts, Sent, etc.)
+    resolveSpecialFolder: async (type: string, fallback: string): Promise<string> => {
+        await ensureConnection();
+        try {
+            // Fetch list of folders with specialUse attributes
+            const folders = await client.list();
+            const special = folders.find(f => f.specialUse === type);
+            if (special) {
+                console.log(`Resolved special folder ${type} to ${special.path}`);
+                return special.path;
+            }
+        } catch (err) {
+            console.warn(`Failed to list folders for special use resolution: ${err}`);
+        }
+        return fallback;
+    },
+
     // 10. Disconnect IMAP
-    disconnectImap: async (): Promise<void> => {
+    disconnect: async (): Promise<void> => {
         if (client) {
             console.log('Disconnecting IMAP client...');
             try {
+                // Ensure logout happens cleanly
                 if (client.usable) {
                     await client.logout();
                 } else {
@@ -1144,6 +1172,131 @@ export const imapService = {
                 client = null; // Clear the client reference
                 console.log('IMAP client disconnected');
             }
+        }
+    },
+
+    // 7. Save Draft to IMAP
+    // Appends email to Drafts folder and optionally deletes previous version
+    saveDraft: async (draft: DraftData, oldUid?: number): Promise<number | null> => {
+        await ensureConnection();
+
+        // 1. Resolve correct Drafts folder
+        const draftsFolder = await imapService.resolveSpecialFolder('\\Drafts', 'Drafts');
+
+        // Ensure folder exists (only if fallback was used or weird case)
+        if (draftsFolder === 'Drafts') {
+            try {
+                await client.mailboxOpen(draftsFolder);
+            } catch (err) {
+                try {
+                    await client.mailboxCreate('Drafts');
+                } catch (createErr) { /* ignore */ }
+            }
+        }
+
+        try {
+            await client.mailboxOpen(draftsFolder);
+        } catch (err) {
+            console.error(`Failed to open drafts folder ${draftsFolder}:`, err);
+            return null;
+        }
+
+        const lock = await client.getMailboxLock(draftsFolder);
+        try {
+            // 2. Build Raw Email using Nodemailer
+            const transporter = nodemailer.createTransport({
+                streamTransport: true,
+                newline: 'windows' // Force CRLF for compatibility
+            });
+
+            // Convert base64 attachments to Nodemailer format
+            const nodemailerAttachments = (draft.attachments || [])
+                .filter((att: any) => att.content) // Only include attachments with content
+                .map((att: any) => ({
+                    filename: att.name,
+                    content: Buffer.from(att.content, 'base64'),
+                    contentType: att.type || 'application/octet-stream'
+                }));
+
+            const mailOptions = {
+                from: configService.getImapConfig()?.user,
+                to: draft.to,
+                cc: draft.cc,
+                bcc: draft.bcc,
+                subject: draft.subject,
+                html: draft.body,
+                text: draft.body.replace(/<[^>]*>?/gm, ''),
+                attachments: nodemailerAttachments
+            };
+
+            const info = await transporter.sendMail(mailOptions);
+
+            // Convert stream to Buffer
+            const rawMessage = await new Promise<Buffer>((resolve, reject) => {
+                const stream = info.message as any;
+                const chunks: Buffer[] = [];
+                stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+                stream.on('end', () => resolve(Buffer.concat(chunks)));
+                stream.on('error', (err: Error) => reject(err));
+            });
+
+            // Verify messages before
+            // const messagesBefore = await client.fetch('1:*', { uid: true });
+            // console.log(`[DEBUG] Messages in ${draftsFolder} before save:`, messagesBefore.map(m => m.uid));
+
+            // 3. Append to Drafts
+            const appendResult = await client.append(draftsFolder, rawMessage, ['\\Draft']);
+
+            if (!appendResult) {
+                throw new Error('Append returned false');
+            }
+
+            const newUid = appendResult.uid || null;
+
+            // 4. Delete old version if exists
+            if (oldUid) {
+                try {
+                    // messageDelete with uid: true ensures we target the right message
+                    await client.messageDelete(`${oldUid}`, { uid: true });
+                } catch (delErr: any) {
+                    // If it fails (e.g., message doesn't exist), that's fine
+                }
+            }
+
+            return newUid;
+        } catch (err) {
+            console.error('Error saving draft to IMAP:', err);
+            return null;
+        } finally {
+            lock.release();
+            // Force expunge by closing mailbox - some servers only expunge on close
+            try {
+                await client.mailboxClose();
+            } catch (e) { /* ignore */ }
+        }
+    },
+
+    // 8. Delete Draft from IMAP
+    deleteDraft: async (uid: number) => {
+        await ensureConnection();
+        const draftsFolder = await imapService.resolveSpecialFolder('\\Drafts', 'Drafts');
+
+        try {
+            await ensureMailboxOpen(draftsFolder);
+
+            const lock = await client.getMailboxLock(draftsFolder);
+            try {
+                await client.messageFlagsAdd(`${uid}`, ['\\Deleted']);
+                console.log(`Deleted draft UID: ${uid} from IMAP (Flagged)`);
+            } finally {
+                lock.release();
+                try {
+                    await client.mailboxClose();
+                    console.log(`[DEBUG] Mailbox ${draftsFolder} closed (triggers EXPUNGE)`);
+                } catch (e) { /* ignore */ }
+            }
+        } catch (err) {
+            console.error(`Failed to delete draft ${uid} from IMAP:`, err);
         }
     }
 };

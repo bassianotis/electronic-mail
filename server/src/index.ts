@@ -19,6 +19,7 @@ import emailsRoutes from './routes/emailsRoutes';
 import archiveRoutes from './routes/archiveRoutes';
 import bucketRoutes from './routes/bucketRoutes';
 import threadRoutes from './routes/threadRoutes';
+import draftRoutes from './routes/draftRoutes';
 
 const app = express();
 
@@ -65,6 +66,7 @@ app.use('/api/buckets', requireAuth, bucketRoutes);
 app.use('/api/bucket', requireAuth, bucketRoutes); // Legacy path for /api/bucket/:name
 app.use('/api/rules', requireAuth, ruleRoutes);
 app.use('/api/threads', requireAuth, threadRoutes);
+app.use('/api/drafts', requireAuth, draftRoutes);
 
 // Legacy sync endpoint
 app.post('/api/sync', requireAuth, (req, res, next) => {

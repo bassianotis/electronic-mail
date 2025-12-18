@@ -19,6 +19,7 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
     const [serverThreadCounts, setServerThreadCounts] = React.useState<Map<string, number>>(new Map());
     const [groupBy, setGroupBy] = React.useState<GroupBy>('none');
     const [showGroupMenu, setShowGroupMenu] = React.useState(false);
+    const [emailsWithDrafts, setEmailsWithDrafts] = React.useState<Set<string>>(new Set());
 
     // Set current view to bucket when this component mounts
     React.useEffect(() => {
@@ -159,6 +160,21 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
             }
         };
         fetchThreadCounts();
+
+        // Fetch drafts status for all bucket emails
+        const fetchDraftStatuses = async () => {
+            try {
+                const res = await fetch('/api/drafts');
+                if (res.ok) {
+                    const drafts = await res.json();
+                    const draftReplyIds = new Set<string>(drafts.map((d: any) => d.in_reply_to).filter(Boolean));
+                    setEmailsWithDrafts(draftReplyIds);
+                }
+            } catch (err) {
+                // Ignore errors
+            }
+        };
+        fetchDraftStatuses();
     }, [bucket]);
 
     // Sync with global emails state for metadata updates (notes, due dates, body, preview)  
@@ -220,15 +236,36 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
             }
         };
 
+        // Handle draft status changes for real-time updates
+        const handleDraftSaved = (e: any) => {
+            if (e.detail?.inReplyTo) {
+                setEmailsWithDrafts(prev => new Set([...prev, e.detail.inReplyTo]));
+            }
+        };
+
+        const handleDraftDeleted = (e: any) => {
+            if (e.detail?.inReplyTo) {
+                setEmailsWithDrafts(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(e.detail.inReplyTo);
+                    return newSet;
+                });
+            }
+        };
+
         // Create custom event listeners
         window.addEventListener('emailArchived', handleArchive);
         window.addEventListener('emailBodyLoaded', handleBodyLoaded);
         window.addEventListener('emailUpdated', handleEmailUpdated);
+        window.addEventListener('draftSaved', handleDraftSaved);
+        window.addEventListener('draftDeleted', handleDraftDeleted);
 
         return () => {
             window.removeEventListener('emailArchived', handleArchive);
             window.removeEventListener('emailBodyLoaded', handleBodyLoaded);
             window.removeEventListener('emailUpdated', handleEmailUpdated);
+            window.removeEventListener('draftSaved', handleDraftSaved);
+            window.removeEventListener('draftDeleted', handleDraftDeleted);
         };
     }, []);
 
@@ -377,6 +414,7 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                         onClick={() => onSelectEmail(email)}
                         onBucket={handleBucketEmail}
                         threadCount={threadCount}
+                        hasDraft={emailsWithDrafts.has(email.id)}
                     />
                 ))}
             </div>

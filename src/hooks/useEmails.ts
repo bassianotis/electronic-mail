@@ -22,6 +22,9 @@ export interface UseEmailsReturn {
     triggerSync: (fetchInbox: () => Promise<void>) => Promise<void>;
     setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
     setIsSyncing: React.Dispatch<React.SetStateAction<boolean>>;
+    saveDraft: (draft: Partial<Email>) => Promise<string | null>;
+    deleteDraft: (id: string, inReplyTo?: string) => Promise<void>;
+    loadDraftForReply: (messageId: string) => Promise<any | null>;
 }
 
 export function useEmails(): UseEmailsReturn {
@@ -290,6 +293,52 @@ export function useEmails(): UseEmailsReturn {
         }
     }, [emails]);
 
+    const saveDraft = useCallback(async (draft: Partial<Email>) => {
+        try {
+            const res = await fetch('/api/drafts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(draft)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                // Dispatch event for real-time updates
+                window.dispatchEvent(new CustomEvent('draftSaved', {
+                    detail: { draftId: data.id, inReplyTo: (draft as any).inReplyTo }
+                }));
+                return data.id; // Return the saved draft ID
+            }
+        } catch (err) {
+            console.error('Failed to save draft:', err);
+        }
+        return null;
+    }, []);
+
+    const deleteDraft = useCallback(async (id: string, inReplyTo?: string) => {
+        try {
+            await fetch(`/api/drafts/${id}`, { method: 'DELETE' });
+            // Dispatch event for real-time updates
+            window.dispatchEvent(new CustomEvent('draftDeleted', {
+                detail: { draftId: id, inReplyTo }
+            }));
+        } catch (err) {
+            console.error('Failed to delete draft:', err);
+        }
+    }, []);
+
+    const loadDraftForReply = useCallback(async (messageId: string) => {
+        try {
+            const res = await fetch(`/api/drafts/reply/${encodeURIComponent(messageId)}`);
+            if (res.ok) {
+                const data = await res.json();
+                return data; // Returns null if no draft found
+            }
+        } catch (err) {
+            console.error('Failed to load draft for reply:', err);
+        }
+        return null;
+    }, []);
+
     return {
         emails,
         setEmails,
@@ -298,13 +347,15 @@ export function useEmails(): UseEmailsReturn {
         setIsLoading,
         setIsSyncing,
         fetchInboxEmails,
-        setEmails,
         archiveEmail,
         unarchiveEmail,
         bucketEmail,
         updateEmail,
         loadEmailBody,
         markAsRead,
-        triggerSync
+        triggerSync,
+        saveDraft,
+        deleteDraft,
+        loadDraftForReply
     };
 }
