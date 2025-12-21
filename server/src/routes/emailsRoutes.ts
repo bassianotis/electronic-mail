@@ -4,6 +4,7 @@
  */
 import { Router } from 'express';
 import { imapService } from '../services/imapService';
+import { smtpService } from '../services/smtpService';
 import { db } from '../services/dbService';
 import { invalidateBucketCache } from './inboxRoutes';
 
@@ -11,6 +12,75 @@ const router = Router();
 
 // Track in-flight body fetch requests to prevent duplicate IMAP operations
 const inFlightFetches = new Map<string, Promise<any>>();
+
+// POST /api/emails/send - Send an email via SMTP
+router.post('/send', async (req, res) => {
+    try {
+        const { to, cc, bcc, subject, body, inReplyTo, references, attachments } = req.body;
+
+        if (!to || !Array.isArray(to) || to.length === 0) {
+            return res.status(400).json({ success: false, error: 'At least one recipient is required' });
+        }
+
+        if (!subject) {
+            return res.status(400).json({ success: false, error: 'Subject is required' });
+        }
+
+        console.log(`[API] Sending email to ${to.join(', ')}...`);
+
+        // Process attachments - convert base64 to Buffer
+        const processedAttachments = attachments?.map((att: any) => ({
+            filename: att.name || att.filename,
+            content: att.content ? Buffer.from(att.content, 'base64') : undefined,
+            contentType: att.type || att.contentType
+        })).filter((att: any) => att.content);
+
+        const result = await smtpService.sendEmail({
+            to,
+            cc: cc || [],
+            bcc: bcc || [],
+            subject,
+            html: body,
+            inReplyTo,
+            references,
+            attachments: processedAttachments
+        });
+
+        if (result.success) {
+            // Cleanup any drafts for this reply (handles optimistic email IDs too)
+            if (inReplyTo) {
+                try {
+                    // Get drafts with their IMAP UIDs before deleting
+                    const draftsResult = await db.query('SELECT id, imap_uid FROM drafts WHERE in_reply_to = ?', [inReplyTo]);
+                    const drafts = draftsResult.rows || [];
+
+                    for (const draft of drafts) {
+                        // Delete from IMAP if we have the UID
+                        if (draft.imap_uid) {
+                            try {
+                                await imapService.deleteDraft(draft.imap_uid);
+                            } catch (imapErr) {
+                                console.error('[API] IMAP draft delete failed:', imapErr);
+                            }
+                        }
+                    }
+
+                    // Delete all matching drafts from database
+                    await db.query('DELETE FROM drafts WHERE in_reply_to = ?', [inReplyTo]);
+                } catch (cleanupErr) {
+                    console.error('[API] Draft cleanup failed:', cleanupErr);
+                    // Don't fail the send if cleanup fails
+                }
+            }
+            res.json({ success: true, messageId: result.messageId });
+        } else {
+            res.status(500).json({ success: false, error: result.error });
+        }
+    } catch (err: any) {
+        console.error('Error sending email:', err);
+        res.status(500).json({ success: false, error: err.message || 'Failed to send email' });
+    }
+});
 
 // GET /api/emails/:messageId - Fetch Single Email Body
 router.get('/:messageId', async (req, res) => {
@@ -135,15 +205,16 @@ router.post('/:messageId/bucket', async (req, res) => {
             sourceBucketId = metaResult.rows?.[0]?.original_bucket || null;
         }
 
-        // 1. UPDATE DB IMMEDIATELY (optimistic)
+        // 1. UPDATE DB IMMEDIATELY (optimistic) - UPDATE ENTIRE THREAD
         if (isUnbucketing) {
+            // Clear bucket for entire thread
             await db.query(`
                 UPDATE email_metadata 
                 SET original_bucket = NULL 
-                WHERE message_id = ?
+                WHERE normalized_subject = (SELECT normalized_subject FROM email_metadata WHERE message_id = ?)
             `, [decodedId]);
         } else if (bucketId) {
-            // Store full email data for instant bucket loading
+            // First, ensure the clicked email has full data
             const senderName = emailData?.from?.[0]?.name || emailData?.from?.[0]?.address || 'Unknown';
             const senderAddress = emailData?.from?.[0]?.address || '';
 
@@ -166,6 +237,13 @@ router.post('/:messageId/bucket', async (req, res) => {
                 emailData?.uid || null,
                 bucketId
             ]);
+
+            // Then, bucket entire thread
+            await db.query(`
+                UPDATE email_metadata 
+                SET original_bucket = ? 
+                WHERE normalized_subject = (SELECT normalized_subject FROM email_metadata WHERE message_id = ?)
+            `, [bucketId, decodedId]);
         }
 
         // Handle "today" bucket - set due date
@@ -260,21 +338,26 @@ router.post('/:messageId/archive', async (req, res) => {
         const { messageId } = req.params;
         const decodedId = decodeURIComponent(messageId);
         const { bucketId } = req.body;
-        console.log(`[BACKEND] Archiving email ${decodedId}. Received bucketId: ${bucketId}`);
+        console.log(`[BACKEND] Archiving thread for ${decodedId}. Received bucketId: ${bucketId}`);
 
-        // Archive the email in IMAP
-        await imapService.archiveEmail(decodedId);
-
-        // Save archive metadata to DB
         const now = new Date().toISOString();
-        // Use UPSERT to handle both new and existing rows correctly
+
+        // 1. Update UI state for ENTIRE thread (all emails with same normalized_subject)
         await db.query(`
-            INSERT INTO email_metadata (message_id, date_archived, original_bucket)
-            VALUES (?, ?, ?)
-            ON CONFLICT(message_id) DO UPDATE SET
-                date_archived = excluded.date_archived,
-                original_bucket = excluded.original_bucket
-        `, [decodedId, now, bucketId || null]);
+            UPDATE email_metadata 
+            SET date_archived = ?, original_bucket = ?
+            WHERE normalized_subject = (SELECT normalized_subject FROM email_metadata WHERE message_id = ?)
+        `, [now, bucketId || null, decodedId]);
+
+        // 2. Archive in IMAP only if this email is NOT from Sent folder
+        const meta = await db.query('SELECT mailbox FROM email_metadata WHERE message_id = ?', [decodedId]);
+        const isFromSent = meta.rows?.[0]?.mailbox === 'Sent';
+
+        if (!isFromSent) {
+            await imapService.archiveEmail(decodedId);
+        } else {
+            console.log(`[BACKEND] Skipping IMAP archive for sent email ${decodedId}`);
+        }
 
         // Update bucket count
         if (bucketId) {
@@ -301,33 +384,35 @@ router.post('/:messageId/unarchive', async (req, res) => {
         const decodedId = decodeURIComponent(messageId);
         const { targetLocation } = req.body; // 'inbox' or bucket name
 
-        // Unarchive in IMAP
-        const unarchivedEmail = await imapService.unarchiveEmail(decodedId, targetLocation);
+        // Check if this email is from the Sent folder
+        const meta = await db.query('SELECT mailbox FROM email_metadata WHERE message_id = ?', [decodedId]);
+        const isFromSent = meta.rows?.[0]?.mailbox === 'Sent';
 
-        // Update DB metadata (Upsert to ensure it exists)
-        const senderName = unarchivedEmail.from?.[0]?.name || unarchivedEmail.from?.[0]?.address || 'Unknown';
-        const senderAddress = unarchivedEmail.from?.[0]?.address || '';
+        // Unarchive in IMAP only for received emails
+        let unarchivedEmail = null;
+        if (!isFromSent) {
+            unarchivedEmail = await imapService.unarchiveEmail(decodedId, targetLocation);
+        } else {
+            console.log(`[BACKEND] Skipping IMAP unarchive for sent email ${decodedId}`);
+            // For sent emails, we still need basic info for the response
+            const emailMeta = await db.query('SELECT subject, sender, sender_address, date, uid FROM email_metadata WHERE message_id = ?', [decodedId]);
+            unarchivedEmail = {
+                messageId: decodedId,
+                subject: emailMeta.rows?.[0]?.subject || '(No Subject)',
+                from: [{ name: emailMeta.rows?.[0]?.sender, address: emailMeta.rows?.[0]?.sender_address }],
+                date: emailMeta.rows?.[0]?.date,
+                uid: emailMeta.rows?.[0]?.uid
+            };
+        }
 
+        // Update DB for ENTIRE thread
         if (targetLocation === 'inbox') {
+            // Clear archive and bucket for entire thread
             await db.query(`
-                INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, uid, date_archived, original_bucket)
-                VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
-                ON CONFLICT(message_id) DO UPDATE SET
-                    date_archived = NULL,
-                    original_bucket = NULL,
-                    subject = excluded.subject,
-                    sender = excluded.sender,
-                    sender_address = excluded.sender_address,
-                    date = excluded.date,
-                    uid = excluded.uid
-            `, [
-                decodedId,
-                unarchivedEmail.subject || '(No Subject)',
-                senderName,
-                senderAddress,
-                unarchivedEmail.date instanceof Date ? unarchivedEmail.date.toISOString() : new Date().toISOString(),
-                unarchivedEmail.uid
-            ]);
+                UPDATE email_metadata 
+                SET date_archived = NULL, original_bucket = NULL
+                WHERE normalized_subject = (SELECT normalized_subject FROM email_metadata WHERE message_id = ?)
+            `, [decodedId]);
 
             // Force IMAP refresh so email appears in inbox immediately
             try {
@@ -337,26 +422,12 @@ router.post('/:messageId/unarchive', async (req, res) => {
                 console.error('Error refreshing inbox after unarchive:', err);
             }
         } else {
+            // Restore to bucket for entire thread
             await db.query(`
-                INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, uid, date_archived, original_bucket)
-                VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
-                ON CONFLICT(message_id) DO UPDATE SET
-                    date_archived = NULL,
-                    original_bucket = excluded.original_bucket,
-                    subject = excluded.subject,
-                    sender = excluded.sender,
-                    sender_address = excluded.sender_address,
-                    date = excluded.date,
-                    uid = excluded.uid
-            `, [
-                decodedId,
-                unarchivedEmail.subject || '(No Subject)',
-                senderName,
-                senderAddress,
-                unarchivedEmail.date instanceof Date ? unarchivedEmail.date.toISOString() : new Date().toISOString(),
-                unarchivedEmail.uid,
-                targetLocation
-            ]);
+                UPDATE email_metadata 
+                SET date_archived = NULL, original_bucket = ?
+                WHERE normalized_subject = (SELECT normalized_subject FROM email_metadata WHERE message_id = ?)
+            `, [targetLocation, decodedId]);
         }
 
         // Update bucket count

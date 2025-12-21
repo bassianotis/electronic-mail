@@ -8,6 +8,14 @@ export interface ImapConfig {
     password: string;
 }
 
+export interface SmtpConfig {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    password: string;
+}
+
 export interface SyncSettings {
     startDate?: string; // ISO date string
     displayName?: string;
@@ -21,6 +29,7 @@ export interface AuthSettings {
 
 export interface AppSettings {
     imap?: ImapConfig;
+    smtp?: SmtpConfig;
     sync?: SyncSettings;
     auth?: AuthSettings;
 }
@@ -72,6 +81,25 @@ class ConfigService {
 
     getImapConfig(): ImapConfig | undefined {
         return this.settings.imap;
+    }
+
+    // Get SMTP config - falls back to deriving from IMAP config
+    getSmtpConfig(): SmtpConfig | undefined {
+        if (this.settings.smtp) {
+            return this.settings.smtp;
+        }
+
+        // Derive SMTP from IMAP config (common pattern: imap.example.com -> smtp.example.com)
+        const imap = this.settings.imap;
+        if (!imap) return undefined;
+
+        return {
+            host: imap.host.replace(/^imap\./i, 'smtp.'),
+            port: 587, // Standard SMTP TLS port
+            secure: false, // Use STARTTLS on port 587
+            user: imap.user,
+            password: imap.password
+        };
     }
 
     getSyncSettings(): SyncSettings {

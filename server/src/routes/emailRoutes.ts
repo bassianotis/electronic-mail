@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { imapService } from '../services/imapService';
+import { smtpService } from '../services/smtpService';
 import { db, getDb } from '../services/dbService';
 import { configService } from '../services/configService';
 
@@ -7,6 +8,50 @@ const router = Router();
 
 router.get('/health', (req, res) => {
     res.send('OK');
+});
+
+// POST /api/emails/send - Send an email via SMTP
+router.post('/emails/send', async (req, res) => {
+    try {
+        const { to, cc, bcc, subject, body, inReplyTo, references, attachments } = req.body;
+
+        if (!to || !Array.isArray(to) || to.length === 0) {
+            return res.status(400).json({ success: false, error: 'At least one recipient is required' });
+        }
+
+        if (!subject) {
+            return res.status(400).json({ success: false, error: 'Subject is required' });
+        }
+
+        console.log(`[API] Sending email to ${to.join(', ')}...`);
+
+        // Process attachments - convert base64 to Buffer
+        const processedAttachments = attachments?.map((att: any) => ({
+            filename: att.name || att.filename,
+            content: att.content ? Buffer.from(att.content, 'base64') : undefined,
+            contentType: att.type || att.contentType
+        })).filter((att: any) => att.content);
+
+        const result = await smtpService.sendEmail({
+            to,
+            cc: cc || [],
+            bcc: bcc || [],
+            subject,
+            html: body,
+            inReplyTo,
+            references,
+            attachments: processedAttachments
+        });
+
+        if (result.success) {
+            res.json({ success: true, messageId: result.messageId });
+        } else {
+            res.status(500).json({ success: false, error: result.error });
+        }
+    } catch (err: any) {
+        console.error('Error sending email:', err);
+        res.status(500).json({ success: false, error: err.message || 'Failed to send email' });
+    }
 });
 
 // POST /api/sync - Trigger immediate inbox sync (bypasses throttling)

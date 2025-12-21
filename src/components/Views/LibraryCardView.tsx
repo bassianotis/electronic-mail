@@ -10,7 +10,7 @@
  * 
  * Uses EmailOverlay with embedded=true for full email functionality
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Email } from '../../store/mailStore';
 import { EmailOverlay } from './EmailOverlay';
@@ -56,25 +56,6 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
     const isComposing = !!replyingToEmail;
 
     // Note and due date editing state (controlled by top bar, rendered in EmailOverlay)
-
-    // Check for existing draft on mount and auto-expand if found
-    useEffect(() => {
-        const checkForDraft = async () => {
-            try {
-                const res = await fetch(`/api/drafts/reply/${encodeURIComponent(email.id)}`);
-                if (res.ok) {
-                    const draft = await res.json();
-                    if (draft && draft.body) {
-                        // Draft exists - auto-expand the composer
-                        setReplyingToEmail(email);
-                    }
-                }
-            } catch (err) {
-                // Ignore errors, just don't auto-expand
-            }
-        };
-        checkForDraft();
-    }, [email.id]);
 
     // Mark email as read
     useEffect(() => {
@@ -188,7 +169,7 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
     }, [threadEmails]);
 
     // Convert ThreadEmail to Email type for EmailOverlay
-    const convertToEmail = (threadEmail: ThreadEmail): Email => ({
+    const convertToEmail = useCallback((threadEmail: ThreadEmail): Email => ({
         id: threadEmail.messageId,
         messageId: threadEmail.messageId,
         uid: threadEmail.uid,
@@ -202,13 +183,26 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
         dueDate: threadEmail.dueDate ? new Date(threadEmail.dueDate) : undefined,
         bucketId: email.bucketId,
         read: true
-    });
+    }), [emailBodies, email.bucketId]);
 
-    const isSentEmail = (mailbox?: string) => mailbox === 'Sent';
-    const handleReply = (targetEmail?: Email) => {
-        const emailToReply = targetEmail || convertToEmail(threadEmails[selectedIndex]);
+    const isSentEmail = useCallback((mailbox?: string) => mailbox === 'Sent', []);
+    const handleReply = useCallback((targetEmail?: Email) => {
+        let emailToReply = targetEmail || convertToEmail(threadEmails[selectedIndex]);
+
+        // If replying to a sent email (empty senderAddress), use the first non-sent email in thread
+        if (!emailToReply.senderAddress || isSentEmail(threadEmails[selectedIndex]?.mailbox)) {
+            const originalEmail = threadEmails.find(e => e.mailbox !== 'Sent' && e.senderAddress);
+            if (originalEmail) {
+                // Use the original email's sender as the reply recipient, but keep subject from current
+                emailToReply = {
+                    ...convertToEmail(originalEmail),
+                    subject: emailToReply.subject // Keep the current subject
+                };
+            }
+        }
+
         setReplyingToEmail(emailToReply);
-    };
+    }, [threadEmails, selectedIndex, convertToEmail, isSentEmail]);
 
     const handleQuickReplyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const text = e.target.value;
@@ -224,11 +218,209 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
         }
     };
 
-    const handleQuickSend = () => {
+    // Check for existing draft once thread is loaded
+    // This handles cases where we reply to a Sent email, but the draft is actually keyed to the original message
+    const hasCheckedDraft = useRef(false);
+
+    useEffect(() => {
+        const checkForDraft = async () => {
+            if (threadEmails.length === 0 || hasCheckedDraft.current) return;
+
+            try {
+                // 1. Candidate A: The current email (default)
+                const currentEmail = threadEmails[0]; // Newest
+                if (!currentEmail?.messageId) return;
+
+                let candidates = [currentEmail];
+
+                // 2. Candidate B: The logical reply target (if current is Sent)
+                if (isSentEmail(currentEmail.mailbox)) {
+                    const originalEmail = threadEmails.find(e => e.mailbox !== 'Sent' && e.senderAddress);
+                    if (originalEmail && originalEmail.messageId) {
+                        candidates.push(originalEmail);
+                    }
+                }
+
+                console.log('[LibraryCardView] Checking drafts for candidates:', candidates.map(c => c.messageId));
+
+                for (const candidate of candidates) {
+                    const targetId = candidate.messageId;
+                    if (!targetId) continue; // Safety check
+
+                    const res = await fetch(`/api/drafts/reply/${encodeURIComponent(targetId)}`);
+                    if (res.ok) {
+                        const draft = await res.json();
+                        if (draft && (draft.body || draft.subject)) {
+                            console.log('[LibraryCardView] Found draft for:', targetId);
+                            // Important: We must expand the composer with the CORRECT replyTo email
+                            const emailData = convertToEmail(candidate);
+                            setReplyingToEmail(emailData);
+                            hasCheckedDraft.current = true;
+                            return; // Stop once found
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[LibraryCardView] Error checking draft:', err);
+            }
+            // Removed finally block so we can retry if threadEmails updates (e.g. from 1 to full thread)
+            // ensuring we find the 'original' email if we started with just a 'sent' email
+        };
+
+        checkForDraft();
+    }, [threadEmails, isSentEmail, convertToEmail]);
+
+    const handleQuickSend = async () => {
+        if (!quickReplyText.trim() || !email) return;
+
         console.log('Sending quick reply:', quickReplyText);
-        setQuickReplyText('');
-        // Add actual send logic here if needed, or assume purely UI demo for now
+
+        const originalText = quickReplyText;
+        setQuickReplyText(''); // Clear immediately for UX
+
+        try {
+            // Fetch body if not already loaded
+            let emailBody = email.body;
+            console.log('[QuickSend] Current email.body:', emailBody?.substring(0, 100));
+
+            // Check if body is a loading placeholder (could be plain text or HTML)
+            const isBodyLoading = !emailBody ||
+                emailBody.trim() === '' ||
+                emailBody === 'Loading body...' ||
+                emailBody.includes('Loading body...') ||
+                emailBody.includes('>Loading body...<') ||
+                emailBody.startsWith('Loading');
+
+            if (isBodyLoading) {
+                console.log('[QuickSend] Body not loaded, fetching from API...');
+                try {
+                    const targetId = email.messageId || email.id;
+                    const bodyResponse = await fetch(`/api/emails/${encodeURIComponent(targetId)}?uid=${email.uid}`);
+                    if (bodyResponse.ok) {
+                        const bodyData = await bodyResponse.json();
+                        emailBody = bodyData.html || bodyData.text || '';
+                        console.log('[QuickSend] Body fetched successfully, length:', emailBody?.length);
+                    } else {
+                        console.warn('[QuickSend] Body fetch failed:', bodyResponse.status);
+                    }
+                } catch (fetchErr) {
+                    console.warn('[QuickSend] Failed to fetch body for quote:', fetchErr);
+                    emailBody = ''; // Continue without quote
+                }
+            } else {
+                console.log('[QuickSend] Body already loaded, length:', emailBody?.length);
+            }
+
+            // Format quoted reply with thread history (Gmail-style)
+            const formatQuotedReply = () => {
+                // Skip if no body available
+                if (!emailBody || emailBody.trim() === '') {
+                    return '';
+                }
+
+                // Handle date - could be Date object or string
+                const dateObj = email.date instanceof Date
+                    ? email.date
+                    : new Date(email.date);
+
+                // Format date like Gmail: "Wed, Nov 5, 2025 at 1:45 PM"
+                const formattedDate = dateObj.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                }) + ' at ' + dateObj.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit'
+                });
+
+                const senderName = email.sender || email.senderAddress;
+                const senderEmail = email.senderAddress;
+
+                // Gmail-style attribution line
+                const attribution = `On ${formattedDate}, ${senderName} &lt;${senderEmail}&gt; wrote:`;
+
+                // Use blockquote with Gmail-compatible styling
+                return `
+<br><br>
+<div class="gmail_quote">
+  <div style="color:#888888;font-size:11px;margin:0 0 8px">${attribution}</div>
+  <blockquote style="margin:0 0 0 0.8ex;border-left:1px solid #ccc;padding-left:1ex">
+    ${emailBody}
+  </blockquote>
+</div>`;
+            };
+
+            // Build reply with user's text + quoted original
+            const userContent = `<div>${originalText.replace(/\n/g, '<br>')}</div>`;
+            const quotedReply = formatQuotedReply();
+            const fullBody = userContent + quotedReply;
+            const replySubject = email.subject?.startsWith('Re:') ? email.subject : `Re: ${email.subject}`;
+
+            // Optimistic UI: Add the sent email to the thread immediately
+            const optimisticEmail: ThreadEmail = {
+                messageId: `pending-${Date.now()}`, // Temporary ID
+                subject: replySubject,
+                sender: 'You', // Display name for sent email
+                senderAddress: '', // Will be filled by server
+                date: new Date().toISOString(),
+                preview: originalText.substring(0, 100),
+                bodyHtml: fullBody,
+                bodyText: originalText,
+                mailbox: 'Sent'
+            };
+
+            // Add to front of thread (newest first) and select it
+            setThreadEmails(prev => [optimisticEmail, ...prev]);
+            setSelectedIndex(0);
+            // Also add body to emailBodies map for immediate display
+            setEmailBodies(prev => {
+                const newMap = new Map(prev);
+                newMap.set(optimisticEmail.messageId, fullBody);
+                return newMap;
+            });
+
+            const response = await fetch('/api/emails/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: [email.senderAddress],
+                    cc: [],
+                    bcc: [],
+                    subject: replySubject,
+                    body: fullBody,
+                    inReplyTo: email.messageId,
+                    references: email.messageId, // Required for proper threading in Thunderbird/webmail
+                    attachments: []
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                console.log('Quick reply sent successfully!');
+                // Update the optimistic email with real messageId if returned
+                if (result.messageId) {
+                    setThreadEmails(prev => prev.map(e =>
+                        e.messageId === optimisticEmail.messageId
+                            ? { ...e, messageId: result.messageId }
+                            : e
+                    ));
+                }
+            } else {
+                console.error('Failed to send quick reply:', result.error);
+                alert(`Failed to send: ${result.error}`);
+                // Remove optimistic email on failure
+                setThreadEmails(prev => prev.filter(e => e.messageId !== optimisticEmail.messageId));
+                setQuickReplyText(originalText); // Restore on failure
+            }
+        } catch (err: any) {
+            console.error('Error sending quick reply:', err);
+            alert(`Error sending: ${err.message}`);
+            setQuickReplyText(originalText); // Restore on failure
+        }
     };
+
 
     // Cards are stacked: oldest at back (highest visual position), newest at front
     // threadEmails[0] = newest (front), threadEmails[length-1] = oldest (back)
@@ -356,18 +548,21 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
 
 
                 {/* Card Stack - all cards same size, overlapping */}
-                <div
+                <motion.div
+                    layout
+                    transition={{ type: "spring", duration: 0.4, bounce: 0 }}
                     style={{
                         position: 'relative',
                         width: CARD_WIDTH,
-                        maxWidth: CARD_MAX_WIDTH,
                         height: CARD_HEIGHT,
+                        maxWidth: CARD_MAX_WIDTH,
+                        perspective: '1200px',
+                        marginTop: '-40px',
                         pointerEvents: 'auto',
                         transformStyle: 'preserve-3d'
                     }}
                 >
-                    {/* Render from back (oldest) to front (newest) for proper z-order */}
-                    {[...threadEmails].reverse().map((threadEmail, reverseIdx) => {
+                    {useMemo(() => [...threadEmails].reverse().map((threadEmail, reverseIdx) => {
                         const dataIdx = threadEmails.length - 1 - reverseIdx; // Original index
                         const isSelected = selectedIndex === dataIdx;
                         const emailData = convertToEmail(threadEmail);
@@ -453,7 +648,7 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
                                     embedded={true}
                                     bucketView={true}
                                     isActive={dataIdx === selectedIndex}
-                                    onReply={(e) => handleReply(e)}
+                                    onReply={handleReply}
                                 />
 
                                 {/* Click overlay for non-selected cards */}
@@ -476,16 +671,13 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
                                 )}
                             </motion.div>
                         );
-                    })}
-                </div>
+                    }), [threadEmails, selectedIndex, convertToEmail, isSentEmail, handleReply, onClose])}
+                </motion.div>
 
                 {/* Unified Bottom Panel and Composer */}
                 <motion.div
                     layout
-                    animate={{
-                        borderRadius: isComposing ? 'var(--radius-lg)' : 'var(--radius-lg)',
-                        backgroundColor: isComposing ? '#fff' : 'rgba(255,255,255,0.8)'
-                    }}
+                    transition={{ type: "spring", duration: 0.4, bounce: 0, opacity: { duration: 0.2 } }}
                     style={{
                         position: 'relative',
                         width: CARD_WIDTH,
@@ -496,10 +688,13 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
                         backdropFilter: 'blur(20px)',
                         zIndex: 300,
                         overflow: 'hidden',
-                        pointerEvents: 'auto'
+                        pointerEvents: 'auto',
+                        borderRadius: 'var(--radius-lg)',
+                        backgroundColor: isComposing ? '#fff' : 'rgba(255,255,255,0.8)'
                     }}
                 >
-                    <div
+                    <motion.div
+                        layout="position"
                         style={{
                             padding: '12px 20px',
                             display: 'flex',
@@ -666,9 +861,11 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
                         </div>
 
                         {/* Bottom Row: Quick Reply Field */}
-                        {!replyingToEmail ? (
+                        {!replyingToEmail && (
                             <motion.div
-                                layoutId="composer"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -693,41 +890,41 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
                                         color: 'var(--color-text-main)'
                                     }}
                                 />
-                                {quickReplyText.length > 0 && (
-                                    <button
-                                        onClick={handleQuickSend}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            width: '24px',
-                                            height: '24px',
-                                            borderRadius: '50%',
-                                            backgroundColor: 'var(--color-accent-secondary)',
-                                            color: '#fff',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            marginLeft: '8px'
-                                        }}
-                                    >
-                                        <Send size={14} />
-                                    </button>
-                                )}
+                                <button
+                                    onClick={handleQuickSend}
+                                    disabled={quickReplyText.length === 0}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '24px',
+                                        height: '24px',
+                                        borderRadius: '50%',
+                                        backgroundColor: 'var(--color-accent-secondary)',
+                                        color: '#fff',
+                                        border: 'none',
+                                        cursor: quickReplyText.length > 0 ? 'pointer' : 'default',
+                                        marginLeft: '8px',
+                                        opacity: quickReplyText.length > 0 ? 1 : 0,
+                                        transition: 'opacity 0.15s ease'
+                                    }}
+                                >
+                                    <Send size={14} />
+                                </button>
                             </motion.div>
-                        ) : null}
-                    </div>
+                        )}
+                    </motion.div>
 
                     {replyingToEmail && (
                         <motion.div
-                            layoutId="composer"
-                            initial={{ height: 40, opacity: 0 }}
-                            animate={{ height: 280, opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                            layout="position"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
                             style={{
                                 width: '100%',
                                 overflow: 'hidden',
-                                backgroundColor: '#fff', // Ensure background for layout
+                                backgroundColor: '#fff',
                                 borderRadius: 'var(--radius-lg)',
                                 boxShadow: 'var(--shadow-floating)'
                             }}
@@ -735,8 +932,25 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({
                             <CompositionPanel
                                 replyTo={replyingToEmail}
                                 initialBody={quickReplyText}
-                                onSend={() => {
-                                    console.log('Sending reply');
+                                onSend={(draft) => {
+                                    console.log('Email sent, adding to thread');
+
+                                    // Add sent email to thread immediately
+                                    const sentEmail: ThreadEmail = {
+                                        messageId: `sent-${Date.now()}`,
+                                        subject: draft.subject,
+                                        sender: 'You',
+                                        senderAddress: '',
+                                        date: new Date().toISOString(),
+                                        preview: draft.body.substring(0, 100).replace(/<[^>]*>/g, ''),
+                                        bodyHtml: draft.body,
+                                        bodyText: draft.body.replace(/<[^>]*>/g, ''),
+                                        mailbox: 'Sent'
+                                    };
+
+                                    setThreadEmails(prev => [sentEmail, ...prev]);
+                                    setSelectedIndex(0);
+                                    setQuickReplyText(''); // Clear quick reply input
                                     setReplyingToEmail(null);
                                 }}
                                 onDiscard={() => {

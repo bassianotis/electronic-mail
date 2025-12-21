@@ -459,7 +459,6 @@ export const ThreadViewWithComposer: React.FC<ThreadViewWithComposerProps> = ({
                             replyTo={replyToEmail}
                             onSend={handleSend}
                             onDiscard={handleDiscard}
-                            onClose={onClose}
                         />
                     </motion.div>
 

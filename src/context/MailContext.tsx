@@ -64,7 +64,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         rulesHook.setRules([]);
 
         try {
-            // 1. Fetch inbox emails (cached)
+            // 1. Fetch inbox emails (cached) - instant response
             await emailsHook.fetchInboxEmails();
 
             // 2. Fetch buckets
@@ -75,9 +75,9 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             emailsHook.setIsLoading(false);
 
-            // NOTE: Background sync disabled to reduce IMAP load.
-            // The 5-minute sync worker on the backend handles syncing.
-            // emailsHook.triggerSync(emailsHook.fetchInboxEmails);
+            // 4. Force sync on page load - runs in background, then refreshes inbox
+            // This ensures new emails appear when user refreshes the page
+            emailsHook.triggerSync(emailsHook.fetchInboxEmails);
 
         } catch (error) {
             console.error('Error initializing mail context:', error);
@@ -171,8 +171,6 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             threads: threadsHook.threads,
             threadsLoading: threadsHook.isLoading,
             fetchInboxThreads: threadsHook.fetchInboxThreads,
-            fetchBucketThreads: threadsHook.fetchBucketThreads,
-            fetchArchiveThreads: threadsHook.fetchArchiveThreads,
             fetchBucketThreads: threadsHook.fetchBucketThreads,
             fetchArchiveThreads: threadsHook.fetchArchiveThreads,
             bucketThread: async (threadId, bucketId) => {

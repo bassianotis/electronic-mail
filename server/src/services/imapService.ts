@@ -256,16 +256,13 @@ export const imapService = {
                         const senderAddress = message.envelope.from?.[0]?.address || '';
                         const normalizedSubj = normalizeSubject(message.envelope.subject || '');
 
-                        // Fire and forget DB update
+                        // DEFENSIVE: Only INSERT new records. On conflict, only update uid.
+                        // NEVER overwrite subject/normalized_subject to prevent metadata corruption.
+                        // Explicitly set mailbox='INBOX' to protect from Sent folder overwrite.
                         db.query(`
-                            INSERT INTO email_metadata (message_id, subject, normalized_subject, sender, sender_address, date, snippet, uid)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO email_metadata (message_id, subject, normalized_subject, sender, sender_address, date, snippet, uid, mailbox)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'INBOX')
                             ON CONFLICT(message_id) DO UPDATE SET
-                                subject = excluded.subject,
-                                normalized_subject = excluded.normalized_subject,
-                                sender = excluded.sender,
-                                sender_address = excluded.sender_address,
-                                date = excluded.date,
                                 uid = excluded.uid
                         `, [
                             message.envelope.messageId,
@@ -620,81 +617,141 @@ export const imapService = {
         }
     },
 
-    // 4. Assign Tags by Message-ID
+    // 4. Assign Tags by Message-ID (with UID fallback from database)
     assignTags: async (messageId: string, tags: string[]) => {
         await ensureConnection();
-        const lock = await client.getMailboxLock('INBOX');
+
+        // Get sent folder name from config
+        const syncSettings = configService.getSyncSettings();
+        const sentFolderName = syncSettings.sentFolderName;
+
+        // First, try to get the UID from the database (more reliable than header search)
+        let dbUid: number | null = null;
+        let dbMailbox: string | null = null;
         try {
-            console.log(`Assigning tags to email ${messageId}:`, tags);
-
-            // Search for email by Message-ID
-            const searchResult = await client.search({ header: { 'message-id': messageId } });
-            if (!searchResult || searchResult.length === 0) {
-                throw new Error(`Email with Message-ID ${messageId} not found`);
+            const dbResult = await db.query(
+                'SELECT uid, mailbox FROM email_metadata WHERE message_id = ?',
+                [messageId]
+            );
+            if (dbResult.rows && dbResult.rows.length > 0) {
+                dbUid = dbResult.rows[0].uid ? parseInt(dbResult.rows[0].uid, 10) : null;
+                dbMailbox = dbResult.rows[0].mailbox || null;
+                console.log(`[assignTags] DB lookup: UID=${dbUid}, mailbox=${dbMailbox}`);
             }
-            const seqNum = searchResult[0];
-            console.log(`Found sequence number ${seqNum} for Message-ID ${messageId}`);
+        } catch (err) {
+            console.log(`[assignTags] DB lookup failed:`, err);
+        }
 
-            // If tags array is empty, this is an unbucket operation
+        // Helper function to apply tags to a message by sequence number
+        const applyTags = async (seqNum: number) => {
             if (tags.length === 0) {
+                // Unbucket operation - remove all bucket-related tags
                 console.log('Unbucketing email - removing all bucket-related tags');
-
-                // Fetch current flags using sequence number
                 const message = await client.fetchOne(seqNum, { flags: true });
                 if (message && typeof message !== 'boolean' && message.flags) {
-                    // Remove all custom keywords (those starting with $)
                     const customKeywords = Array.from(message.flags).filter((flag: string) =>
                         flag.startsWith('$') && flag !== '\\Deleted' && flag !== '\\Seen' && flag !== '\\Flagged'
                     );
-
                     if (customKeywords.length > 0) {
                         console.log('Removing keywords:', customKeywords);
                         await client.messageFlagsRemove(seqNum, customKeywords);
                     }
                 }
-
                 console.log('Email unbucketed successfully');
-                return;
-            }
+            } else {
+                // Normal bucketing: Add requested tags + $bucketed
+                const allTags = [...tags, '$bucketed'];
+                const sanitizedTags = allTags.map(tag => sanitizeKeyword(tag));
+                console.log('Sanitized tags:', sanitizedTags);
 
-            // Normal bucketing: Add requested tags + $bucketed
-            const allTags = [...tags, '$bucketed'];
+                // First, remove all existing bucket tags
+                const message = await client.fetchOne(seqNum, { flags: true });
+                if (message && typeof message !== 'boolean' && message.flags) {
+                    const customKeywords = Array.from(message.flags).filter((flag: string) =>
+                        flag.startsWith('$') && flag !== '\\Deleted' && flag !== '\\Seen' && flag !== '\\Flagged'
+                    );
+                    if (customKeywords.length > 0) {
+                        await client.messageFlagsRemove(seqNum, customKeywords);
+                    }
+                }
 
-            // Sanitize tags using the shared function
-            const sanitizedTags = allTags.map(tag => sanitizeKeyword(tag));
+                // Add each keyword individually
+                for (const tag of sanitizedTags) {
+                    await client.messageFlagsAdd(seqNum, [tag]);
+                }
+                console.log('Tags added successfully');
 
-            console.log('Sanitized tags:', sanitizedTags);
-
-            // First, remove all existing bucket tags, then add the new ones
-            const message = await client.fetchOne(seqNum, { flags: true });
-            if (message && typeof message !== 'boolean' && message.flags) {
-                const customKeywords = Array.from(message.flags).filter((flag: string) =>
-                    flag.startsWith('$') && flag !== '\\Deleted' && flag !== '\\Seen' && flag !== '\\Flagged'
-                );
-
-                if (customKeywords.length > 0) {
-                    await client.messageFlagsRemove(seqNum, customKeywords);
+                // Verify
+                const verifyMessage = await client.fetchOne(seqNum, { flags: true });
+                if (verifyMessage && typeof verifyMessage !== 'boolean') {
+                    console.log('Current flags after tagging:', verifyMessage.flags);
                 }
             }
+        };
 
-            // Add each keyword individually (they already have $ prefix from sanitization)
-            for (const tag of sanitizedTags) {
-                await client.messageFlagsAdd(seqNum, [tag]);
-            }
+        console.log(`Assigning tags to email ${messageId}:`, tags);
 
-            console.log('Tags added successfully');
-
-            // Verify by fetching the message flags
-            const verifyMessage = await client.fetchOne(seqNum, { flags: true });
-            if (verifyMessage && typeof verifyMessage !== 'boolean') {
-                console.log('Current flags after tagging:', verifyMessage.flags);
-            }
-        } catch (err) {
-            console.error('Error assigning tags:', err);
-            throw err;
-        } finally {
-            lock.release();
+        // Folders to search (INBOX first, then Sent if configured)
+        const foldersToSearch = ['INBOX'];
+        if (sentFolderName) {
+            foldersToSearch.push(sentFolderName);
         }
+
+        // Search for the email across folders using both Message-ID and UID approaches
+        for (const folder of foldersToSearch) {
+            const lock = await client.getMailboxLock(folder);
+            try {
+                // Approach 1: Try Message-ID header search first
+                const searchResult = await client.search({ header: { 'message-id': messageId } });
+                if (searchResult && searchResult.length > 0) {
+                    const seqNum = searchResult[0];
+                    console.log(`Found email ${messageId} in ${folder} at seq ${seqNum} (via Message-ID search)`);
+                    await applyTags(seqNum);
+                    return; // Success
+                }
+
+                // Approach 2: If we have a UID from DB, try UID-based fetch
+                if (dbUid && (folder === 'INBOX' || (dbMailbox && folder.includes(dbMailbox)))) {
+                    console.log(`[assignTags] Message-ID search failed, trying UID ${dbUid} in ${folder}`);
+                    try {
+                        // Fetch by UID to verify it exists and get the sequence number
+                        const uidMessage = await client.fetchOne(`${dbUid}`, { envelope: true, uid: true }, { uid: true });
+                        const hasEnvelope = uidMessage && typeof uidMessage !== 'boolean' && uidMessage.envelope;
+                        console.log(`[assignTags] UID ${dbUid} fetch result:`, uidMessage ? 'found' : 'not found',
+                            hasEnvelope ? `(msgId: ${(uidMessage as any).envelope.messageId?.substring(0, 30)}...)` : '(no envelope)');
+
+                        if (uidMessage && typeof uidMessage !== 'boolean' && uidMessage.envelope) {
+                            // Verify Message-ID matches (crucial!)
+                            if (uidMessage.envelope.messageId === messageId) {
+                                // We need the sequence number for flag operations, search by UID
+                                const uidSearchResult = await client.search({ uid: `${dbUid}` });
+                                if (uidSearchResult && uidSearchResult.length > 0) {
+                                    const seqNum = uidSearchResult[0];
+                                    console.log(`Found email ${messageId} in ${folder} at seq ${seqNum} (via UID ${dbUid})`);
+                                    await applyTags(seqNum);
+                                    return; // Success
+                                }
+                            } else {
+                                console.log(`[assignTags] UID ${dbUid} has DIFFERENT Message-ID: ${uidMessage.envelope.messageId}`);
+                                console.log(`[assignTags] Expected: ${messageId}`);
+                                console.log(`[assignTags] This suggests stale UID in database - email may have been moved/deleted`);
+                            }
+                        } else {
+                            console.log(`[assignTags] UID ${dbUid} does NOT exist in ${folder} - email may have been deleted from IMAP`);
+                        }
+                    } catch (uidErr) {
+                        console.log(`[assignTags] UID-based fetch failed in ${folder}:`, uidErr);
+                    }
+                }
+            } catch (err) {
+                console.log(`Error searching in ${folder}:`, err);
+            } finally {
+                lock.release();
+            }
+        }
+
+        // If we get here, email wasn't found in any folder
+        throw new Error(`Email with Message-ID ${messageId} not found in INBOX or Sent`);
     },
 
     // 5. Archive Email by Message-ID - Tag AND move to Archives folder
@@ -743,15 +800,18 @@ export const imapService = {
                     if (searchResult && searchResult.length > 0) {
                         foundInFolder = folder;
                         const seqNum = searchResult[0];
-                        console.log(`[archiveEmail] Found email ${messageId} in folder ${folder}`);
+                        console.log(`[archiveEmail] Found email ${messageId} in folder ${folder} at seq ${seqNum}`);
 
                         // Add $archived tag
+                        console.log(`[archiveEmail] Adding $archived tag...`);
                         await client.messageFlagsAdd(seqNum, ['$archived']);
+                        console.log(`[archiveEmail] Tag added successfully`);
 
                         // Move to Archives folder
-                        console.log(`Moving email ${messageId} from ${folder} to Archives folder...`);
-                        await client.messageMove(seqNum, 'Archives');
-                        console.log(`Email ${messageId} archived successfully from ${folder}`);
+                        console.log(`[archiveEmail] Moving email ${messageId} from ${folder} to Archives...`);
+                        const moveResult = await client.messageMove(seqNum, 'Archives');
+                        console.log(`[archiveEmail] Move result:`, moveResult);
+                        console.log(`[archiveEmail] Email ${messageId} archived successfully from ${folder}`);
                         break;
                     }
                 } finally {
@@ -886,17 +946,13 @@ export const imapService = {
                     const senderAddress = message.envelope.from?.[0]?.address || '';
                     const normalizedSubj = normalizeSubject(message.envelope.subject || '');
 
+                    // DEFENSIVE: Only INSERT new records. On conflict, DO NOT overwrite mailbox.
+                    // This prevents clobbering INBOX emails that also appear in Sent.
                     db.query(`
                         INSERT INTO email_metadata (message_id, subject, normalized_subject, sender, sender_address, date, snippet, uid, mailbox)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Sent')
                         ON CONFLICT(message_id) DO UPDATE SET
-                            subject = excluded.subject,
-                            normalized_subject = excluded.normalized_subject,
-                            sender = excluded.sender,
-                            sender_address = excluded.sender_address,
-                            date = excluded.date,
-                            uid = excluded.uid,
-                            mailbox = 'Sent'
+                            uid = excluded.uid
                     `, [
                         message.envelope.messageId,
                         message.envelope.subject || '(No Subject)',
@@ -927,21 +983,54 @@ export const imapService = {
         try {
             await client.mailboxOpen('Archives');
 
-            // 1. Search for email by Message-ID
-            const searchIds = await client.search({ header: { 'message-id': messageId } });
-            if (!searchIds || searchIds.length === 0) {
-                throw new Error(`Email with Message-ID ${messageId} not found in Archives`);
+            // 1. Search for email by Message-ID (returns UIDs)
+            const searchUids = await client.search({ header: { 'message-id': messageId } }, { uid: true });
+            if (!searchUids || searchUids.length === 0) {
+                // Not in Archives - check if already in INBOX (may have been moved by another operation)
+                lock.release();
+                const inboxLock = await client.getMailboxLock('INBOX');
+                try {
+                    await client.mailboxOpen('INBOX');
+                    const inboxSearch = await client.search({ header: { 'message-id': messageId } }, { uid: true });
+                    if (inboxSearch && inboxSearch.length > 0) {
+                        console.log(`[unarchiveEmail] Email ${messageId} already in INBOX with UID ${inboxSearch[0]}, skipping move`);
+                        // Return a placeholder - the email is already where it needs to be
+                        return {
+                            uid: inboxSearch[0],
+                            messageId,
+                            subject: '(Already in INBOX)',
+                            from: [],
+                            date: new Date(),
+                            snippet: '',
+                            read: true,
+                            starred: false
+                        } as EmailSummary;
+                    }
+                } finally {
+                    inboxLock.release();
+                }
+                throw new Error(`Email with Message-ID ${messageId} not found in Archives or INBOX`);
             }
-            const sequenceNum = searchIds[0];
+            const uid = searchUids[0];
+            console.log(`Found email ${messageId} in Archives with UID: ${uid}`);
 
-            // 2. Fetch current flags AND envelope (to return full details)
-            // We MUST get the UID to perform safe operations
-            const message = await client.fetchOne(sequenceNum, { flags: true, envelope: true, uid: true });
-            if (!message || !message.envelope || !message.uid) {
+            // 2. Fetch current flags AND envelope using UID (with retry for race conditions)
+            let message: any = null;
+            let fetchRetries = 3;
+            while (fetchRetries > 0 && !message?.envelope) {
+                message = await client.fetchOne(`${uid}`, { flags: true, envelope: true, uid: true }, { uid: true });
+                if (!message || !message.envelope) {
+                    fetchRetries--;
+                    if (fetchRetries > 0) {
+                        console.log(`[unarchiveEmail] fetchOne failed, retrying... (${fetchRetries} attempts left)`);
+                        await new Promise(resolve => setTimeout(resolve, 200)); // Small delay before retry
+                    }
+                }
+            }
+            if (!message || !message.envelope) {
                 throw new Error(`Could not fetch details for email ${messageId}`);
             }
 
-            const uid = message.uid;
             console.log(`Unarchiving email ${messageId} (UID: ${uid})`);
             console.log(`Current flags:`, message.flags);
 
@@ -950,7 +1039,7 @@ export const imapService = {
 
             // If we are moving to inbox, or changing buckets, we should remove existing bucket tags
             if (message.flags) {
-                message.flags.forEach(flag => {
+                message.flags.forEach((flag: string) => {
                     // Remove $bucketed
                     if (flag === '$bucketed') {
                         flagsToRemove.add(flag);
@@ -977,10 +1066,37 @@ export const imapService = {
             }
 
             // 5. Move back to INBOX using UID
-            console.log(`Moving email UID ${uid} from Archives to INBOX...`);
-            await client.messageMove(`${uid}`, 'INBOX', { uid: true });
+            // Re-open Archives to ensure we're in the correct mailbox (parallel operations may have switched it)
+            await client.mailboxOpen('Archives');
+            const currentPath = (client.mailbox as any)?.path || 'unknown';
+            console.log(`Moving email UID ${uid} from Archives to INBOX... (current mailbox: ${currentPath})`);
 
+            // Verify we're in Archives before moving
+            if (currentPath !== 'INBOX.Archives') {
+                console.error(`[unarchiveEmail] CRITICAL: Mailbox switched! Expected INBOX.Archives but got ${currentPath}`);
+                await client.mailboxOpen('Archives'); // Try one more time
+            }
+
+            const moveResult = await client.messageMove(`${uid}`, 'INBOX', { uid: true });
+            console.log(`Move result:`, moveResult);
+
+            // Close Archives before verifying
             await client.mailboxClose();
+
+            // 6. Verify the email actually moved to INBOX
+            const verifyLock = await client.getMailboxLock('INBOX');
+            try {
+                await client.mailboxOpen('INBOX');
+                const verifySearch = await client.search({ header: { 'message-id': messageId } }, { uid: true });
+                if (!verifySearch || verifySearch.length === 0) {
+                    console.error(`Email ${messageId} NOT found in INBOX after move! Move may have failed.`);
+                    throw new Error(`Email move verification failed: ${messageId} not found in INBOX`);
+                }
+                console.log(`Email ${messageId} verified in INBOX with UID ${verifySearch[0]}`);
+            } finally {
+                verifyLock.release();
+            }
+
             console.log(`Email ${messageId} unarchived successfully to ${targetLocation}`);
 
             // Return the full email summary
@@ -1256,7 +1372,6 @@ export const imapService = {
             // 4. Delete old version if exists
             if (oldUid) {
                 try {
-                    // messageDelete with uid: true ensures we target the right message
                     await client.messageDelete(`${oldUid}`, { uid: true });
                 } catch (delErr: any) {
                     // If it fails (e.g., message doesn't exist), that's fine
@@ -1286,17 +1401,111 @@ export const imapService = {
 
             const lock = await client.getMailboxLock(draftsFolder);
             try {
-                await client.messageFlagsAdd(`${uid}`, ['\\Deleted']);
-                console.log(`Deleted draft UID: ${uid} from IMAP (Flagged)`);
+                // Use messageDelete with uid:true to flag as deleted AND expunge
+                // We skip verification as it was causing 'Invalid messageset' errors on some servers
+                if (uid && uid > 0) {
+                    console.log(`[IMAP] Deleting draft ${uid} from ${draftsFolder}...`);
+                    try {
+                        await client.messageDelete(`${uid}`, { uid: true });
+                        console.log(`[IMAP] Draft ${uid} marked for deletion.`);
+                    } catch (delErr) {
+                        console.warn(`[IMAP] messageDelete failed for ${uid}:`, delErr);
+                    }
+                } else {
+                    console.warn(`[IMAP] Invalid UID ${uid}, skipping deletion.`);
+                }
+
             } finally {
                 lock.release();
+                // Force expunge by closing mailbox
                 try {
                     await client.mailboxClose();
-                    console.log(`[DEBUG] Mailbox ${draftsFolder} closed (triggers EXPUNGE)`);
+                    console.log(`[IMAP] Mailbox closed to force expunge.`);
                 } catch (e) { /* ignore */ }
             }
         } catch (err) {
             console.error(`Failed to delete draft ${uid} from IMAP:`, err);
+        }
+    },
+
+    // 9. Copy sent email to Sent folder
+    copyToSentFolder: async (email: {
+        to: string[];
+        cc?: string[];
+        bcc?: string[];
+        subject: string;
+        html: string;
+        text?: string;
+        inReplyTo?: string;
+        references?: string;
+        attachments?: Array<{
+            filename: string;
+            content: Buffer | string;
+            contentType?: string;
+        }>;
+    }, messageId?: string) => {
+        await ensureConnection();
+
+        const syncSettings = configService.getSyncSettings();
+        const sentFolder = syncSettings.sentFolderName ||
+            await imapService.resolveSpecialFolder('\\Sent', 'Sent');
+
+        // Build raw email using nodemailer
+        const imapConfig = configService.getImapConfig();
+        if (!imapConfig) throw new Error('IMAP not configured');
+
+        const transporter = nodemailer.createTransport({
+            streamTransport: true,
+            newline: 'unix'
+        });
+
+        const mailOptions = {
+            from: imapConfig.user,
+            to: email.to.join(', '),
+            cc: email.cc?.join(', '),
+            bcc: email.bcc?.join(', '),
+            subject: email.subject,
+            html: email.html,
+            text: email.text,
+            messageId: messageId,
+            inReplyTo: email.inReplyTo,
+            references: email.references,
+            attachments: email.attachments?.map(att => ({
+                filename: att.filename,
+                content: att.content,
+                contentType: att.contentType
+            }))
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+
+        // Convert stream to buffer
+        let rawEmail: Buffer;
+        if (info.message instanceof Buffer) {
+            rawEmail = info.message;
+        } else {
+            const chunks: Buffer[] = [];
+            for await (const chunk of info.message) {
+                chunks.push(Buffer.from(chunk));
+            }
+            rawEmail = Buffer.concat(chunks);
+        }
+
+        // Append to Sent folder
+        try {
+            await ensureMailboxOpen(sentFolder);
+
+            const lock = await client.getMailboxLock(sentFolder);
+            try {
+                // Append with \Seen flag (already read - we sent it)
+                await client.append(sentFolder, rawEmail, ['\\Seen']);
+                console.log(`[IMAP] Appended sent email to ${sentFolder}`);
+            } finally {
+                lock.release();
+            }
+        } catch (err) {
+            console.error(`Failed to copy email to Sent folder:`, err);
+            throw err;
         }
     }
 };

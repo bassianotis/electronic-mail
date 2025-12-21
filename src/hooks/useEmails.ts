@@ -48,8 +48,12 @@ export function useEmails(): UseEmailsReturn {
     const triggerSync = useCallback(async (fetchInbox: () => Promise<void>) => {
         setIsSyncing(true);
         try {
-            await fetch('/api/sync?wait=true', { method: 'POST' });
-            await fetchInbox();
+            // Call the correct endpoint: /api/inbox/sync (not /api/sync)
+            const res = await fetch('/api/inbox/sync?wait=true', { method: 'POST' });
+            if (res.ok) {
+                // Only refresh inbox after sync completes successfully
+                await fetchInbox();
+            }
         } catch (err) {
             console.error('Failed to trigger sync:', err);
         } finally {

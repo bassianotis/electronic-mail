@@ -11,6 +11,15 @@ const SyncConfigSection: React.FC = () => {
     const [displayName, setDisplayName] = useState('');
     const [startDate, setStartDate] = useState('');
     const [importStarred, setImportStarred] = useState(true);
+
+    // SMTP settings
+    const [smtpHost, setSmtpHost] = useState('');
+    const [smtpPort, setSmtpPort] = useState('587');
+    const [smtpSecure, setSmtpSecure] = useState(false);
+    const [smtpUser, setSmtpUser] = useState('');
+    const [smtpPassword, setSmtpPassword] = useState('');
+    const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
@@ -27,6 +36,15 @@ const SyncConfigSection: React.FC = () => {
                     setDisplayName(data.displayName || '');
                     setStartDate(data.startDate ? data.startDate.split('T')[0] : '');
                     setImportStarred(data.importStarred !== false); // Default true
+
+                    // Load SMTP settings if present
+                    if (data.smtp) {
+                        setSmtpHost(data.smtp.host || '');
+                        setSmtpPort(String(data.smtp.port || 587));
+                        setSmtpSecure(data.smtp.secure || false);
+                        setSmtpUser(data.smtp.user || '');
+                        // Don't load password for security
+                    }
                 }
             } catch (err) {
                 console.error('Failed to fetch sync settings:', err);
@@ -50,7 +68,14 @@ const SyncConfigSection: React.FC = () => {
                     sentFolderName,
                     displayName,
                     startDate: startDate ? new Date(startDate + 'T00:00:00').toISOString() : null,
-                    importStarred
+                    importStarred,
+                    smtp: smtpHost ? {
+                        host: smtpHost,
+                        port: parseInt(smtpPort) || 587,
+                        secure: smtpSecure,
+                        user: smtpUser || undefined,
+                        password: smtpPassword || undefined
+                    } : undefined
                 })
             });
 
@@ -169,6 +194,133 @@ const SyncConfigSection: React.FC = () => {
                     <label htmlFor="importStarred" style={{ fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>
                         Include starred emails (regardless of date)
                     </label>
+                </div>
+
+                {/* SMTP Configuration */}
+                <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--color-border)' }}>
+                    <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: 600 }}>SMTP Settings (for sending)</h4>
+                    <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                        Configure outgoing mail server. If left blank, SMTP is derived from IMAP settings.
+                    </p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
+                                SMTP Host
+                            </label>
+                            <input
+                                type="text"
+                                value={smtpHost}
+                                onChange={(e) => setSmtpHost(e.target.value)}
+                                placeholder="smtp.gmail.com"
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--color-border)',
+                                    fontSize: '13px',
+                                    backgroundColor: 'var(--color-bg-subtle)'
+                                }}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
+                                Port
+                            </label>
+                            <input
+                                type="number"
+                                value={smtpPort}
+                                onChange={(e) => setSmtpPort(e.target.value)}
+                                placeholder="587"
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--color-border)',
+                                    fontSize: '13px',
+                                    backgroundColor: 'var(--color-bg-subtle)'
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <input
+                            type="checkbox"
+                            id="smtpSecure"
+                            checked={smtpSecure}
+                            onChange={(e) => setSmtpSecure(e.target.checked)}
+                            style={{
+                                width: '14px',
+                                height: '14px',
+                                cursor: 'pointer'
+                            }}
+                        />
+                        <label htmlFor="smtpSecure" style={{ fontSize: '12px', fontWeight: 500, cursor: 'pointer' }}>
+                            Use SSL/TLS (port 465). Uncheck for STARTTLS (port 587).
+                        </label>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
+                                Username (optional)
+                            </label>
+                            <input
+                                type="text"
+                                value={smtpUser}
+                                onChange={(e) => setSmtpUser(e.target.value)}
+                                placeholder="Same as IMAP if blank"
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--color-border)',
+                                    fontSize: '13px',
+                                    backgroundColor: 'var(--color-bg-subtle)'
+                                }}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
+                                Password (optional)
+                            </label>
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    type={showSmtpPassword ? 'text' : 'password'}
+                                    value={smtpPassword}
+                                    onChange={(e) => setSmtpPassword(e.target.value)}
+                                    placeholder="Same as IMAP if blank"
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px 10px',
+                                        paddingRight: '40px',
+                                        borderRadius: '6px',
+                                        border: '1px solid var(--color-border)',
+                                        fontSize: '13px',
+                                        backgroundColor: 'var(--color-bg-subtle)'
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                                    style={{
+                                        position: 'absolute',
+                                        right: '8px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        color: 'var(--color-text-muted)'
+                                    }}
+                                >
+                                    {showSmtpPassword ? 'Hide' : 'Show'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {error && (

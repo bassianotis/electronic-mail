@@ -62,7 +62,30 @@ router.post('/', async (req, res) => {
     try {
         const { id, to, cc, bcc, subject, body, attachments, inReplyTo } = req.body;
 
-        const draftId = id || uuidv4();
+        // Check for existing draft by inReplyTo to prevent duplicates
+        // If there's already a draft for this reply, reuse it
+        let draftId = id;
+        let currentImapUid: number | undefined;
+
+        if (inReplyTo) {
+            const existingByReply = await db.query(
+                'SELECT id, imap_uid FROM drafts WHERE in_reply_to = ? LIMIT 1',
+                [inReplyTo]
+            );
+            if (existingByReply.rows && existingByReply.rows.length > 0) {
+                const existing = existingByReply.rows[0];
+                draftId = existing.id;
+                currentImapUid = existing.imap_uid;
+            }
+        }
+
+        // Fallback: check by provided ID
+        if (!currentImapUid && draftId) {
+            const existingById = await db.query('SELECT imap_uid FROM drafts WHERE id = ?', [draftId]);
+            currentImapUid = existingById.rows?.[0]?.imap_uid;
+        }
+
+        draftId = draftId || uuidv4();
         const now = new Date().toISOString();
 
         // Convert arrays to JSON strings
@@ -70,10 +93,6 @@ router.post('/', async (req, res) => {
         const ccStr = JSON.stringify(cc || []);
         const bccStr = JSON.stringify(bcc || []);
         const attStr = JSON.stringify(attachments || []);
-
-        // Check for existing draft to get previous IMAP UID
-        const existingResult = await db.query('SELECT imap_uid FROM drafts WHERE id = ?', [draftId]);
-        const currentImapUid = existingResult.rows?.[0]?.imap_uid;
 
         // Upsert with in_reply_to
         await db.query(`
@@ -132,7 +151,7 @@ router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Get IMAP UID before creating
+        // Get IMAP UID before deleting
         const result = await db.query('SELECT imap_uid FROM drafts WHERE id = ?', [id]);
         const imapUid = result.rows?.[0]?.imap_uid;
 

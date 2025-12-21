@@ -64,7 +64,8 @@ export const CompositionPanel: React.FC<CompositionPanelProps> = ({
             if (draftLoaded) return;
             setDraftLoaded(true);
 
-            const existingDraft = await loadDraftForReply(replyTo.id);
+            const targetId = replyTo.messageId || replyTo.id;
+            const existingDraft = await loadDraftForReply(targetId);
             if (existingDraft) {
                 // Pre-populate form with existing draft
                 setDraftId(existingDraft.id);
@@ -116,6 +117,49 @@ export const CompositionPanel: React.FC<CompositionPanelProps> = ({
         draftDataRef.current = { to, cc, bcc, subject, body, attachments };
     }, [to, cc, bcc, subject, body, attachments]);
 
+    // Helper to format quoted reply (Gmail/Outlook compatible)
+    const formatQuotedReply = () => {
+        // Skip if no body or body is still loading/placeholder
+        if (!replyTo.body ||
+            replyTo.body === 'Loading body...' ||
+            replyTo.body.trim() === '' ||
+            replyTo.body.startsWith('Loading')) {
+            return '';
+        }
+
+        // Handle date - could be Date object or string
+        const dateObj = replyTo.date instanceof Date
+            ? replyTo.date
+            : new Date(replyTo.date);
+
+        // Format date like Gmail: "Wed, Nov 5, 2025 at 1:45 PM"
+        const formattedDate = dateObj.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        }) + ' at ' + dateObj.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+
+        const senderName = replyTo.sender || replyTo.senderAddress;
+        const senderEmail = replyTo.senderAddress;
+
+        // Gmail-style attribution line
+        const attribution = `On ${formattedDate}, ${senderName} &lt;${senderEmail}&gt; wrote:`;
+
+        // Use blockquote with Gmail-compatible styling
+        return `
+<br><br>
+<div class="gmail_quote">
+  <div style="color:#888888;font-size:11px;margin:0 0 8px">${attribution}</div>
+  <blockquote style="margin:0 0 0 0.8ex;border-left:1px solid #ccc;padding-left:1ex">
+    ${replyTo.body}
+  </blockquote>
+</div>`;
+    };
+
     // Serialized Save Function
     const saveContent = async () => {
         if (isSavingRef.current) {
@@ -136,43 +180,6 @@ export const CompositionPanel: React.FC<CompositionPanelProps> = ({
                 setDraftStatus('saved');
                 return;
             }
-
-            // Build full body with quoted reply (Gmail/Outlook compatible format)
-            const formatQuotedReply = () => {
-                if (!replyTo.body) return '';
-
-                // Handle date - could be Date object or string
-                const dateObj = replyTo.date instanceof Date
-                    ? replyTo.date
-                    : new Date(replyTo.date);
-
-                // Format date like Gmail: "Wed, Nov 5, 2025 at 1:45 PM"
-                const formattedDate = dateObj.toLocaleDateString('en-US', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                }) + ' at ' + dateObj.toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit'
-                });
-
-                const senderName = replyTo.sender || replyTo.senderAddress;
-                const senderEmail = replyTo.senderAddress;
-
-                // Gmail-style attribution line
-                const attribution = `On ${formattedDate}, ${senderName} &lt;${senderEmail}&gt; wrote:`;
-
-                // Use blockquote with Gmail-compatible styling
-                return `
-<br><br>
-<div class="gmail_quote">
-  <div style="color:#888888;font-size:11px;margin:0 0 8px">${attribution}</div>
-  <blockquote style="margin:0 0 0 0.8ex;border-left:1px solid #ccc;padding-left:1ex">
-    ${replyTo.body}
-  </blockquote>
-</div>`;
-            };
 
             // Convert plain text newlines to HTML <br> tags for proper display
             const htmlBody = body.replace(/\n/g, '<br>');
@@ -301,55 +308,154 @@ export const CompositionPanel: React.FC<CompositionPanelProps> = ({
         setAttachments(prev => prev.filter((_, idx) => idx !== indexToRemove));
     };
 
+    // Email validation regex (standard HTML5 regex)
+    const validateEmail = (email: string) => {
+        return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email);
+    };
+
+    // Warn before closing tab with unsaved changes
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            // Check if there are unsaved changes
+            // Use refs for latest state since this listener is registered once
+            const { to: currentTo, body: currentBody, attachments: currentAttachments, subject: currentSubject } = draftDataRef.current;
+
+            // Determine if form is dirty
+            const isDirty = (currentBody && currentBody.trim() !== '') ||
+                (currentSubject !== initialSubjectRef.current) ||
+                (currentTo !== replyTo.senderAddress) ||
+                (currentAttachments && currentAttachments.length > 0);
+
+            if (isDirty) {
+                e.preventDefault();
+                e.returnValue = ''; // Standard for modern browsers
+                return '';
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [replyTo.senderAddress]);
+
+    // Store initial subject to check for changes
+    const initialSubjectRef = useRef(subject);
+
     const handleSend = async () => {
         if (!to.trim()) {
             return;
         }
 
+        // Validate Recipients
+        const allRecipients = [
+            ...to.split(',').map(e => e.trim()).filter(Boolean),
+            ...cc.split(',').map(e => e.trim()).filter(Boolean),
+            ...bcc.split(',').map(e => e.trim()).filter(Boolean)
+        ];
+
+        const invalidEmails = allRecipients.filter(email => !validateEmail(email));
+
+        if (invalidEmails.length > 0) {
+            alert(`Please correct the following invalid email addresses:\n${invalidEmails.join('\n')}`);
+            return;
+        }
+
         setIsSending(true);
 
-        const draft: DraftEmail = {
-            to: to.split(',').map(e => e.trim()).filter(Boolean),
-            cc: cc.split(',').map(e => e.trim()).filter(Boolean),
-            bcc: bcc.split(',').map(e => e.trim()).filter(Boolean),
-            subject,
-            body,
-            inReplyTo: replyTo.messageId,
-            attachments // Include attachments
-        };
-
         try {
-            await onSend(draft);
-            // Cleanup draft if exists
-            if (draftId) {
-                await fetch(`/api/drafts/${draftId}`, { method: 'DELETE' });
-                // Dispatch event for real-time draft indicator removal
+            // Build full body with quoted reply (same as draft saving)
+            const bodyHtml = body.replace(/\n/g, '<br>');
+            const quotedReply = formatQuotedReply();
+            const fullBody = `<div>${bodyHtml}</div>${quotedReply}`;
+
+            // Convert attachments to base64
+            const convertToBase64 = (file: File): Promise<string> => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        // Remove dataURL prefix (e.g., "data:image/png;base64,")
+                        const base64 = (reader.result as string).split(',')[1];
+                        resolve(base64);
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            };
+
+            const attachmentData = await Promise.all(
+                attachments.map(async (file) => ({
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    content: await convertToBase64(file)
+                }))
+            );
+
+            // Call the send API
+            const response = await fetch('/api/emails/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: to.split(',').map(e => e.trim()).filter(Boolean),
+                    cc: cc.split(',').map(e => e.trim()).filter(Boolean),
+                    bcc: bcc.split(',').map(e => e.trim()).filter(Boolean),
+                    subject,
+                    body: fullBody,
+                    inReplyTo: replyTo.messageId,
+                    references: replyTo.messageId, // Required for proper threading in Thunderbird/webmail
+                    attachments: attachmentData
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                // Draft cleanup is now handled by /api/emails/send endpoint using inReplyTo
+                // Just dispatch the event for UI updates
                 window.dispatchEvent(new CustomEvent('draftDeleted', {
-                    detail: { draftId, inReplyTo: replyTo.id }
+                    detail: { draftId: currentDraftIdRef.current, inReplyTo: replyTo.id }
                 }));
+                onSend({
+                    to: to.split(',').map(e => e.trim()).filter(Boolean),
+                    cc: cc.split(',').map(e => e.trim()).filter(Boolean),
+                    bcc: bcc.split(',').map(e => e.trim()).filter(Boolean),
+                    subject,
+                    body: fullBody,  // Use fullBody (HTML) instead of plain text for proper rendering
+                    inReplyTo: replyTo.messageId,
+                    attachments
+                });
+            } else {
+                console.error('Failed to send email:', result.error);
+                alert(`Failed to send email: ${result.error}`);
             }
+        } catch (err: any) {
+            console.error('Error sending email:', err);
+            alert(`Error sending email: ${err.message}`);
         } finally {
             setIsSending(false);
         }
     };
 
     const handleDiscard = async () => {
-        if (draftId) {
-            await fetch(`/api/drafts/${draftId}`, { method: 'DELETE' });
-            // Dispatch event for real-time draft indicator removal
-            window.dispatchEvent(new CustomEvent('draftDeleted', {
-                detail: { draftId, inReplyTo: replyTo.id }
-            }));
+        const idToDelete = currentDraftIdRef.current;
+        console.log(`[CompositionPanel] Discarding draft ${idToDelete} (inReplyTo: ${replyTo.id})`);
+
+        if (idToDelete) {
+            try {
+                await fetch(`/api/drafts/${idToDelete}`, { method: 'DELETE' });
+                console.log(`[CompositionPanel] Draft ${idToDelete} deleted successfully`);
+                // Dispatch event for real-time draft indicator removal
+                window.dispatchEvent(new CustomEvent('draftDeleted', {
+                    detail: { draftId: idToDelete, inReplyTo: replyTo.id }
+                }));
+            } catch (err) {
+                console.error(`[CompositionPanel] Failed to delete draft ${idToDelete}:`, err);
+            }
         }
         onDiscard();
     };
 
     return (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+        <div
             style={{
                 height: '100%',
                 display: 'flex',
@@ -700,7 +806,7 @@ export const CompositionPanel: React.FC<CompositionPanelProps> = ({
                     {!isSending && <Send size={13} strokeWidth={2.5} />}
                 </button>
             </motion.div>
-        </motion.div >
+        </div>
     );
 };
 

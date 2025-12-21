@@ -10,6 +10,7 @@
 import { imapService } from './imapService';
 import { configService } from './configService';
 import { db } from './dbService';
+import { threadService } from './threadService';
 
 let syncInterval: NodeJS.Timeout | null = null;
 let isSyncing = false;  // Prevent concurrent syncs
@@ -29,50 +30,81 @@ export function isSyncInProgress(): boolean {
  * Reconcile local DB with IMAP state
  * Detects emails that were archived/deleted from other email clients
  * Only checks emails after the configured sync start date
+ * 
+ * NOTE: This function has been DISABLED because it incorrectly marks emails
+ * as "externally archived" when IMAP queries return incomplete results.
+ * The mailbox column is now the source of truth for IMAP folder state.
  */
 async function reconcileWithImap(): Promise<void> {
-    console.log('  🔄 Running reconciliation...');
+    console.log('  🔄 Reconciliation SKIPPED (disabled to prevent false positives)');
 
+    // DISABLED: This logic was causing emails to be incorrectly marked as archived
+    // when getInboxMessageIds() returned incomplete results due to pagination,
+    // connection issues, or timing problems.
+    // 
+    // Instead, we now rely on:
+    // 1. The mailbox column being set correctly during fetchTriageEmails()
+    // 2. A consistency check that clears date_archived for emails where mailbox='INBOX'
+
+    return;
+}
+
+/**
+ * Cleanup orphaned database entries
+ * Removes entries where the email no longer exists in IMAP
+ * This handles cases where emails were deleted externally but still appear in the UI
+ * 
+ * IMPORTANT: Only targets emails WITHIN the sync date range. Emails from before
+ * the sync start date are kept (they're not orphans, just outside the sync window).
+ * 
+ * Strategy: Check a sample of entries per sync cycle to avoid overwhelming IMAP.
+ */
+async function cleanupOrphanedEntries(): Promise<void> {
     try {
-        // Get sync start date from config
+        // Get sync settings to determine date range
         const syncSettings = configService.getSyncSettings();
-        const cutoffDate = syncSettings.startDate ? new Date(syncSettings.startDate) : new Date('2025-11-30');
+        const startDate = syncSettings.startDate ? new Date(syncSettings.startDate) : new Date('2025-06-01');
 
-        // Get all message IDs currently in IMAP inbox (already filtered by date)
+        // Find potential orphans: unbucketed/unarchived entries WITHIN the sync date range
+        // that have no mailbox set (indicating they were never properly synced)
+        const result = await db.query(`
+            SELECT message_id, uid, date FROM email_metadata 
+            WHERE uid IS NOT NULL 
+              AND (mailbox IS NULL OR mailbox = '')
+              AND (date_archived IS NULL OR date_archived = '')
+              AND (original_bucket IS NULL OR original_bucket = '')
+              AND date >= ?
+            ORDER BY uid ASC
+            LIMIT 10
+        `, [startDate.toISOString()]);
+
+        const candidates = result.rows || [];
+        if (candidates.length === 0) {
+            return; // No orphan candidates to check
+        }
+
+        console.log(`  🧹 Checking ${candidates.length} potential orphaned entries (within sync range)...`);
+
+        // Get actual IMAP message IDs from inbox
         const imapMessageIds = await imapService.getInboxMessageIds();
-        const imapIdSet = new Set(imapMessageIds);
 
-        // Get all message IDs in local DB that should be in inbox (after cutoff date)
-        const dbResult = await db.query(`
-            SELECT message_id FROM email_metadata 
-            WHERE original_bucket IS NULL 
-            AND date_archived IS NULL
-            AND date >= ?
-        `, [cutoffDate.toISOString()]);
-
-        const dbMessageIds = (dbResult.rows || []).map((r: any) => r.message_id);
-
-        // Mark as externally archived any emails in DB but not in IMAP
-        let removed = 0;
-        for (const dbId of dbMessageIds) {
-            if (!imapIdSet.has(dbId)) {
-                await db.query(`
-                    UPDATE email_metadata 
-                    SET date_archived = ?, original_bucket = 'external'
-                    WHERE message_id = ?
-                `, [new Date().toISOString(), dbId]);
-                removed++;
-                console.log(`    ↪ Externally archived: ${dbId.substring(0, 30)}`);
+        let orphansDeleted = 0;
+        for (const candidate of candidates) {
+            // If the message_id isn't in the IMAP inbox, it's an orphan
+            const existsInImap = imapMessageIds.includes(candidate.message_id);
+            if (!existsInImap) {
+                console.log(`    🗑️  Removing orphaned entry: ${candidate.message_id.substring(0, 40)}...`);
+                await db.query('DELETE FROM email_metadata WHERE message_id = ?', [candidate.message_id]);
+                orphansDeleted++;
             }
         }
 
-        if (removed > 0) {
-            console.log(`  ✓ Reconciliation: ${removed} emails marked as externally archived`);
-        } else {
-            console.log(`  ✓ Reconciliation: all ${dbMessageIds.length} emails still in IMAP`);
+        if (orphansDeleted > 0) {
+            console.log(`  🧹 Deleted ${orphansDeleted} orphaned database entries`);
         }
     } catch (err) {
-        console.error('  ✗ Reconciliation failed:', err);
+        console.error('  ⚠️ Orphan cleanup failed:', err);
+        // Don't throw - this is a non-critical operation
     }
 }
 
@@ -113,6 +145,9 @@ export async function syncAllBuckets(): Promise<void> {
         // 2. Reconcile inbox with IMAP (detect external changes)
         await reconcileWithImap();
 
+        // 2b. Cleanup orphaned database entries (phantom emails)
+        await cleanupOrphanedEntries();
+
         // 3. Sync sent emails (for thread display)
         console.log('  📤 Syncing sent emails...');
         try {
@@ -133,14 +168,12 @@ export async function syncAllBuckets(): Promise<void> {
                     const senderName = email.from?.[0]?.name || email.from?.[0]?.address || 'Unknown';
                     const senderAddress = email.from?.[0]?.address || '';
 
+                    // DEFENSIVE: Only INSERT new records. On conflict, only update uid/bucket.
+                    // NEVER overwrite subject/sender to prevent metadata corruption.
                     await db.query(`
                         INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, uid, original_bucket)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(message_id) DO UPDATE SET
-                            subject = excluded.subject,
-                            sender = excluded.sender,
-                            sender_address = excluded.sender_address,
-                            date = excluded.date,
                             uid = excluded.uid,
                             original_bucket = excluded.original_bucket
                     `, [
@@ -162,7 +195,9 @@ export async function syncAllBuckets(): Promise<void> {
             }
         }
 
-
+        // 5. Backfill thread IDs for any new emails
+        // This ensures thread counts are accurate immediately after sync
+        await threadService.backfillThreadIds();
 
         console.log('🔄 Bucket sync complete');
     } catch (err) {

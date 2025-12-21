@@ -106,7 +106,7 @@ const splitQuotedContent = (html: string): { original: string; quoted: string | 
     return { original: html, quoted: null };
 };
 
-export const EmailOverlay: React.FC<EmailOverlayProps> = ({
+export const EmailOverlay: React.FC<EmailOverlayProps> = React.memo(({
     email: propEmail,
     onClose,
     onReply,
@@ -285,11 +285,19 @@ export const EmailOverlay: React.FC<EmailOverlayProps> = ({
     // Effect 1: Reset local state when email ID changes
     useEffect(() => {
         if (email) {
+
             setNote(email.note || '');
             setDueDate(email.dueDate ? new Date(email.dueDate).toISOString().split('T')[0] : '');
             setIsEditingNote(false);
             setIsSettingDate(false);
-            setLocalBody(null);
+            // If email.body is already valid (not loading placeholder), use it as localBody
+            // This preserves optimistic email bodies that were set by the sender
+            const bodyIsValid = email.body &&
+                email.body !== '<p>Loading body...</p>' &&
+                email.body !== 'Loading body...' &&
+                email.body.length > 0;
+
+            setLocalBody(bodyIsValid ? email.body : null);
             setAttachments(email.attachments || []);
         }
     }, [email?.id]);
@@ -1841,4 +1849,4 @@ export const EmailOverlay: React.FC<EmailOverlayProps> = ({
             }
         </AnimatePresence >
     );
-};
+});

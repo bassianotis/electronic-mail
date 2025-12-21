@@ -17,7 +17,6 @@ interface ThreadItemProps {
     isExpanded: boolean;
     onBucket: (threadId: string, bucketId: string) => void;
     onArchive: (threadId: string) => void;
-    onReturnToBucket?: (threadId: string) => void;
     onClick: () => void;
 }
 
@@ -26,11 +25,10 @@ export const ThreadItem: React.FC<ThreadItemProps> = ({
     isExpanded,
     onBucket,
     onArchive,
-    onReturnToBucket,
     onClick
 }) => {
     const { setHoveredBucketId, setIsDragging } = useDragDrop();
-    const { loadEmailBody, emails, buckets, updateEmail, markAsRead } = useMail();
+    const { loadEmailBody, emails, buckets, markAsRead } = useMail();
 
     const dragControls = useDragControls();
     const isDraggingRef = useRef(false);
@@ -50,12 +48,9 @@ export const ThreadItem: React.FC<ThreadItemProps> = ({
     // Toggle between sender name and email address
     const [showSenderEmail, setShowSenderEmail] = useState(false);
 
-    // Inline Action States
-    const [isEditingNote, setIsEditingNote] = useState(false);
-    const [note, setNote] = useState('');
-    const [isSettingDate, setIsSettingDate] = useState(false);
-    const dateButtonRef = useRef<HTMLButtonElement>(null);
-    const [datePopupPosition, setDatePopupPosition] = useState({ top: 0, left: 0 });
+    // Inline Action States (note editing not yet implemented in this component)
+    const [_isSettingDate, setIsSettingDate] = useState(false);
+    const [_isEditingNote, setIsEditingNote] = useState(false);
 
     // Control layout animation
     const [enableLayoutAnim, setEnableLayoutAnim] = useState(false);
@@ -101,7 +96,6 @@ export const ThreadItem: React.FC<ThreadItemProps> = ({
 
     const handleDrag = (_event: any, info: any) => {
         const dragX = info.point.x;
-        const windowWidth = window.innerWidth;
 
         // Get bucket container dimensions
         const bucketContainer = document.querySelector('.bucket-container');
@@ -179,10 +173,6 @@ export const ThreadItem: React.FC<ThreadItemProps> = ({
         onClick();
     };
 
-    const handleSaveNote = () => {
-        updateEmail(emailId, { note });
-        setIsEditingNote(false);
-    };
 
     const hasStack = thread.count > 1;
 

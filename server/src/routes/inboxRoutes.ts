@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
             AND date_archived IS NULL
             AND date IS NOT NULL
             AND date > '2000-01-01'
-            AND (mailbox IS NULL OR mailbox != 'Sent')
+            AND (mailbox IS NULL OR mailbox = 'INBOX')
             ORDER BY date DESC
         `);
 
@@ -106,6 +106,18 @@ router.post('/sync', async (req, res) => {
         const syncPromise = (async () => {
             try {
                 await imapService.fetchTriageEmails();
+
+                // CONSISTENCY CHECK: Clear date_archived for emails that are in INBOX
+                // This prevents the bug where emails appear in Archive but are actually in INBOX on IMAP
+                const fixed = await db.query(`
+                    UPDATE email_metadata 
+                    SET date_archived = NULL, original_bucket = NULL
+                    WHERE mailbox = 'INBOX' AND date_archived IS NOT NULL
+                `);
+                if (fixed.rowCount && fixed.rowCount > 0) {
+                    console.log(`🔧 Consistency fix: cleared date_archived for ${fixed.rowCount} emails in INBOX`);
+                }
+
                 console.log('✓ Manual sync complete');
             } catch (err) {
                 console.error('✗ Manual sync failed:', err);

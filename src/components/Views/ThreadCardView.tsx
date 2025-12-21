@@ -756,7 +756,6 @@ export const ThreadCardView: React.FC<ThreadCardViewProps> = ({
                                             replyTo={email}
                                             onSend={handleSend}
                                             onDiscard={handleDiscard}
-                                            onClose={handleDiscard}
                                         />
                                     </motion.div>
                                 );

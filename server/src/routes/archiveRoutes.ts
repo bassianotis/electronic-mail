@@ -15,10 +15,11 @@ router.get('/', async (req, res) => {
         console.log('[ARCHIVE] Request received');
 
         // 1. Fetch from DB (Cache First)
-        // We include emails that have a date_archived timestamp OR are in the 'Archives' folder (if we tracked that in mailbox column, but currently date_archived is the key)
+        // Exclude Sent folder emails since they stay in Sent (not moved to Archives)
         const dbResult = await db.query(`
             SELECT * FROM email_metadata 
             WHERE (date_archived IS NOT NULL)
+              AND (mailbox IS NULL OR mailbox != 'Sent')
             ORDER BY date DESC
         `);
 
@@ -48,12 +49,23 @@ router.get('/', async (req, res) => {
                     const senderName = email.from?.[0]?.name || email.from?.[0]?.address || 'Unknown';
                     const senderAddress = email.from?.[0]?.address || '';
 
+                    // Only set date_archived for emails NOT currently in INBOX or Sent (to avoid overwriting unarchived/sent emails)
+                    // Also set mailbox='Archives' to track folder state
                     await db.query(`
-                        INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, uid, date_archived)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO email_metadata (message_id, subject, sender, sender_address, date, uid, date_archived, mailbox)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'Archives')
                         ON CONFLICT(message_id) DO UPDATE SET
-                             date_archived = COALESCE(email_metadata.date_archived, excluded.date_archived),
-                             uid = excluded.uid
+                             uid = excluded.uid,
+                             date_archived = CASE 
+                                 WHEN email_metadata.mailbox = 'INBOX' THEN email_metadata.date_archived  -- Don't overwrite if in INBOX
+                                 WHEN email_metadata.mailbox = 'Sent' THEN NULL  -- Sent emails should never have date_archived
+                                 ELSE COALESCE(email_metadata.date_archived, excluded.date_archived)
+                             END,
+                             mailbox = CASE
+                                 WHEN email_metadata.mailbox = 'INBOX' THEN 'INBOX'  -- Don't change mailbox if in INBOX
+                                 WHEN email_metadata.mailbox = 'Sent' THEN 'Sent'  -- Don't change mailbox if in Sent
+                                 ELSE 'Archives'
+                             END
                     `, [
                         email.messageId,
                         email.subject,

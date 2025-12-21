@@ -322,6 +322,8 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                                     email={email}
                                     onClick={() => onSelectEmail(email)}
                                     onBucket={handleBucketEmail}
+                                    // Grouped view doesn't have thread counts calculated yet
+                                    hasDraft={emailsWithDrafts.has(email.id) || (email.messageId ? emailsWithDrafts.has(email.messageId) : false)}
                                 />
                             ))}
                         </div>
@@ -356,8 +358,8 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         }
 
         // For each thread, sort by date and return the latest email with thread count
-        // Also aggregate notes and due dates from all emails in the thread
-        const result: Array<{ email: Email; threadCount: number; allNotes: string[]; allDueDates: Date[] }> = [];
+        // Also aggregate notes, due dates, and draft status from all emails in the thread
+        const result: Array<{ email: Email; threadCount: number; allNotes: string[]; allDueDates: Date[]; hasDraft?: boolean }> = [];
         for (const [key, emails] of threadMap) {
             // Sort by date descending
             emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -368,6 +370,11 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                 .map(e => e.dueDate ? new Date(e.dueDate) : null)
                 .filter((d): d is Date => d !== null)
                 .sort((a, b) => a.getTime() - b.getTime()); // Earliest first
+
+            // Check if ANY email in the thread has a draft
+            const hasDraft = emails.some(e =>
+                emailsWithDrafts.has(e.id) || (e.messageId && emailsWithDrafts.has(e.messageId))
+            );
 
             // Create enhanced email with aggregated metadata
             const latestEmail = { ...emails[0] };
@@ -391,14 +398,15 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                 // Use server count if available (includes sent emails), fallback to local count
                 threadCount: serverThreadCounts.get(key) || emails.length,
                 allNotes,
-                allDueDates
+                allDueDates,
+                hasDraft
             });
         }
 
         // Sort threads by latest email date
         result.sort((a, b) => new Date(b.email.date).getTime() - new Date(a.email.date).getTime());
         return result;
-    }, [bucketEmails, serverThreadCounts]);
+    }, [bucketEmails, serverThreadCounts, emailsWithDrafts]);
 
     const renderUngrouped = () => {
         return (
@@ -407,14 +415,14 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                 gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
                 gap: 'var(--space-lg)'
             }}>
-                {threadedEmails.map(({ email, threadCount }) => (
+                {threadedEmails.map(({ email, threadCount, hasDraft }) => (
                     <EmailCard
                         key={email.id}
                         email={email}
                         onClick={() => onSelectEmail(email)}
                         onBucket={handleBucketEmail}
                         threadCount={threadCount}
-                        hasDraft={emailsWithDrafts.has(email.id)}
+                        hasDraft={hasDraft}
                     />
                 ))}
             </div>

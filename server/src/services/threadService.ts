@@ -70,6 +70,7 @@ export async function computeThreadId(
 /**
  * Get all message_ids that belong to the same thread
  * Uses normalized_subject matching with fallback to thread_id
+ * NOTE: Includes Sent emails because threads contain both sent and received
  */
 async function getThreadEmailIds(threadIdOrMessageId: string): Promise<string[]> {
     // First, try to find the email and get its subject
@@ -97,23 +98,21 @@ async function getThreadEmailIds(threadIdOrMessageId: string): Promise<string[]>
     }
 
     // Query ALL emails in the same location (bucket or unbucketed)
-    // Then filter by normalized subject in JavaScript for reliability
+    // Include Sent emails - threads contain both sent and received
     let allEmails;
     if (bucketId) {
-        // Find all emails in this bucket
+        // Find all emails in this bucket (including Sent)
         allEmails = await db.query(`
             SELECT message_id, subject FROM email_metadata
             WHERE original_bucket = ?
               AND (date_archived IS NULL OR date_archived = '')
-              AND (mailbox IS NULL OR mailbox != 'Sent')
         `, [bucketId]);
     } else {
-        // Find all unbucketed emails in inbox
+        // Find all unbucketed emails in inbox (including Sent)
         allEmails = await db.query(`
             SELECT message_id, subject FROM email_metadata
             WHERE (original_bucket IS NULL OR original_bucket = '')
               AND (date_archived IS NULL OR date_archived = '')
-              AND (mailbox IS NULL OR mailbox != 'Sent')
         `);
     }
 
@@ -456,13 +455,12 @@ export async function moveThreadToBucket(threadId: string, bucketId: string): Pr
         throw new Error(`Thread bucket move failed: ${failed.length}/${emailIds.length} emails could not be bucketed`);
     }
 
-    // Step 2: Update database only on 100% IMAP success
+    // Step 2: Update database for ALL emails in thread (including Sent) - this is UI state
     const placeholders = emailIds.map(() => '?').join(',');
     await db.query(`
         UPDATE email_metadata 
         SET original_bucket = ?, date_archived = NULL
         WHERE message_id IN (${placeholders})
-          AND (mailbox IS NULL OR mailbox != 'Sent')
     `, [bucketId, ...emailIds]);
 
     console.log(`[threadService] Moved ${emailIds.length} emails in thread ${threadId} to bucket ${bucketId} (IMAP + DB)`);
@@ -470,6 +468,8 @@ export async function moveThreadToBucket(threadId: string, bucketId: string): Pr
 
 /**
  * Archive entire thread (atomic operation)
+ * - Updates date_archived for ALL emails in thread (UI state)
+ * - Only moves non-Sent emails in IMAP (Sent stays in Sent folder)
  */
 export async function archiveThread(threadId: string): Promise<void> {
     // Get all emails in this thread using normalized_subject matching
@@ -480,7 +480,7 @@ export async function archiveThread(threadId: string): Promise<void> {
         return;
     }
 
-    // Filter to only unarchived emails
+    // Filter to only unarchived NON-SENT emails for IMAP operations
     const placeholders = emailIds.map(() => '?').join(',');
     const result = await db.query(`
         SELECT message_id FROM email_metadata
@@ -489,40 +489,47 @@ export async function archiveThread(threadId: string): Promise<void> {
           AND (mailbox IS NULL OR mailbox != 'Sent')
     `, emailIds);
 
-    if (!result.rows || result.rows.length === 0) {
-        console.log(`[threadService] No unarchived emails in thread ${threadId}`);
-        return;
-    }
+    // Move each NON-SENT email in IMAP
+    if (result.rows && result.rows.length > 0) {
+        console.log(`[threadService] Archiving ${result.rows.length} received emails in IMAP for thread ${threadId}`);
 
-    console.log(`[threadService] Archiving ${result.rows.length} emails in thread ${threadId}`);
+        const failed: string[] = [];
+        for (const row of result.rows) {
+            try {
+                await imapService.archiveEmail(row.message_id);
+            } catch (err) {
+                console.error(`[threadService] Failed to archive email ${row.message_id}:`, err);
+                failed.push(row.message_id);
+            }
+        }
 
-    // Move each email in IMAP
-    const failed: string[] = [];
-    for (const row of result.rows) {
-        try {
-            await imapService.archiveEmail(row.message_id);
-        } catch (err) {
-            console.error(`[threadService] Failed to archive email ${row.message_id}:`, err);
-            failed.push(row.message_id);
+        // If any IMAP moves failed, throw error (atomicity)
+        if (failed.length > 0) {
+            throw new Error(`Thread archive failed: ${failed.length}/${result.rows.length} emails could not be archived`);
         }
     }
 
-    // If any failed, throw error (atomicity)
-    if (failed.length > 0) {
-        throw new Error(`Thread archive failed: ${failed.length}/${result.rows.length} emails could not be archived`);
-    }
-
-    // Update database only on 100% success
+    // Update database for ALL emails in thread (including Sent) - this is UI state
+    // Also update mailbox to 'Archives' for non-Sent emails to prevent consistency check from undoing archive
     const now = new Date().toISOString();
     const updatePlaceholders = emailIds.map(() => '?').join(',');
+
+    // Set date_archived for ALL emails
     await db.query(`
         UPDATE email_metadata 
         SET date_archived = ?
         WHERE message_id IN (${updatePlaceholders})
-          AND (mailbox IS NULL OR mailbox != 'Sent')
     `, [now, ...emailIds]);
 
-    console.log(`[threadService] Thread ${threadId} archived successfully`);
+    // Set mailbox = 'Archives' for non-Sent emails (so consistency check doesn't undo the archive)
+    await db.query(`
+        UPDATE email_metadata 
+        SET mailbox = 'Archives'
+        WHERE message_id IN (${updatePlaceholders})
+          AND (mailbox IS NULL OR mailbox != 'Sent')
+    `, emailIds);
+
+    console.log(`[threadService] Thread ${threadId} archived successfully (${emailIds.length} emails)`);
 }
 
 /**
@@ -575,37 +582,45 @@ export async function unarchiveThread(threadId: string, targetLocation: string):
 
     console.log(`[threadService] Unarchiving ${emailIds.length} emails in thread ${threadId} to ${targetLocation}`);
 
-    // Step 3: Move each email in IMAP
+    // Step 3: Move each email in IMAP and update DB immediately after success
     const failed: string[] = [];
+    const succeeded: string[] = [];
+
     for (const messageId of emailIds) {
         try {
             await imapService.unarchiveEmail(messageId, targetLocation);
+
+            // Update DB immediately for this email to prevent data inconsistency
+            if (targetLocation === 'inbox') {
+                await db.query(`
+                    UPDATE email_metadata 
+                    SET date_archived = NULL, original_bucket = NULL, mailbox = 'INBOX'
+                    WHERE message_id = ? AND (mailbox IS NULL OR mailbox != 'Sent')
+                `, [messageId]);
+            } else {
+                // targetLocation is a bucket ID
+                await db.query(`
+                    UPDATE email_metadata 
+                    SET date_archived = NULL, original_bucket = ?, mailbox = 'INBOX'
+                    WHERE message_id = ? AND (mailbox IS NULL OR mailbox != 'Sent')
+                `, [targetLocation, messageId]);
+            }
+
+            succeeded.push(messageId);
         } catch (err) {
             console.error(`[threadService] Failed to unarchive email ${messageId}:`, err);
             failed.push(messageId);
         }
     }
 
-    // If any failed, throw error
-    if (failed.length > 0) {
-        throw new Error(`Thread unarchive failed: ${failed.length}/${emailIds.length} emails could not be unarchived`);
+    // Log results
+    if (succeeded.length > 0) {
+        console.log(`[threadService] Successfully unarchived ${succeeded.length}/${emailIds.length} emails in thread ${threadId}`);
     }
 
-    // Step 4: Update database - clear date_archived and set bucket if specified
-    const placeholders = emailIds.map(() => '?').join(',');
-    if (targetLocation === 'inbox') {
-        await db.query(`
-            UPDATE email_metadata 
-            SET date_archived = NULL, original_bucket = NULL
-            WHERE message_id IN (${placeholders})
-        `, emailIds);
-    } else {
-        // targetLocation is a bucket ID
-        await db.query(`
-            UPDATE email_metadata 
-            SET date_archived = NULL, original_bucket = ?
-            WHERE message_id IN (${placeholders})
-        `, [targetLocation, ...emailIds]);
+    // If any failed, throw error (but DB is already updated for successful ones)
+    if (failed.length > 0) {
+        throw new Error(`Thread unarchive partially failed: ${succeeded.length}/${emailIds.length} emails unarchived, ${failed.length} failed`);
     }
 
     console.log(`[threadService] Thread ${threadId} unarchived successfully`);
@@ -643,13 +658,12 @@ export async function unbucketThread(threadId: string): Promise<void> {
         throw new Error(`Thread unbucket failed: ${failed.length}/${emailIds.length} emails could not be unbucketed`);
     }
 
-    // Step 2: Update database only on 100% IMAP success
+    // Step 2: Update database for ALL emails in thread (including Sent) - this is UI state
     const placeholders = emailIds.map(() => '?').join(',');
     await db.query(`
         UPDATE email_metadata 
         SET original_bucket = NULL, date_archived = NULL
         WHERE message_id IN (${placeholders})
-          AND (mailbox IS NULL OR mailbox != 'Sent')
     `, emailIds);
 
     console.log(`[threadService] Unbucketed ${emailIds.length} emails in thread ${threadId} (IMAP + DB)`);
@@ -748,15 +762,37 @@ export async function autoConsolidateThreads(): Promise<number> {
 
             for (const row of matchingArchived) {
                 try {
+                    // Check if email is already in INBOX (another process may have moved it)
+                    const checkResult = await db.query(`
+                        SELECT mailbox, date_archived FROM email_metadata WHERE message_id = ?
+                    `, [row.message_id]);
+
+                    if (checkResult.rows?.[0]?.mailbox === 'INBOX' && !checkResult.rows?.[0]?.date_archived) {
+                        // Already in inbox, skip IMAP operation
+                        console.log(`[threadService] Email ${row.message_id} already in INBOX, skipping`);
+                        continue;
+                    }
+
                     await imapService.unarchiveEmail(row.message_id, 'INBOX');
                     await db.query(`
                         UPDATE email_metadata 
-                        SET date_archived = NULL, original_bucket = NULL, normalized_subject = ?
+                        SET date_archived = NULL, original_bucket = NULL, mailbox = 'INBOX', normalized_subject = ?
                         WHERE message_id = ?
                     `, [subject, row.message_id]);
                     consolidated++;
-                } catch (err) {
-                    console.error(`[threadService] Failed to consolidate email ${row.message_id}:`, err);
+                } catch (err: any) {
+                    // If email not found in Archives, it was likely already moved - update DB to match
+                    if (err.message?.includes('not found in Archives')) {
+                        console.log(`[threadService] Email ${row.message_id} already moved from Archives, updating DB`);
+                        await db.query(`
+                            UPDATE email_metadata 
+                            SET date_archived = NULL, original_bucket = NULL, mailbox = 'INBOX', normalized_subject = ?
+                            WHERE message_id = ?
+                        `, [subject, row.message_id]);
+                        consolidated++;
+                    } else {
+                        console.error(`[threadService] Failed to consolidate email ${row.message_id}:`, err);
+                    }
                 }
             }
         }

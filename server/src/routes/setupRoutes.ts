@@ -370,7 +370,19 @@ router.post('/import', async (req, res) => {
 router.get('/sync-settings', async (req, res) => {
     try {
         const syncSettings = configService.getSyncSettings();
-        res.json(syncSettings);
+        const smtpConfig = configService.getSmtpConfig();
+
+        // Return sync settings with SMTP config (without password for security)
+        res.json({
+            ...syncSettings,
+            smtp: smtpConfig ? {
+                host: smtpConfig.host,
+                port: smtpConfig.port,
+                secure: smtpConfig.secure,
+                user: smtpConfig.user
+                // Don't send password to frontend
+            } : undefined
+        });
     } catch (error: any) {
         console.error('Error getting sync settings:', error);
         res.status(500).json({ error: 'Failed to get sync settings' });
@@ -380,7 +392,7 @@ router.get('/sync-settings', async (req, res) => {
 // Update sync settings (from Settings modal)
 router.put('/sync-settings', async (req, res) => {
     try {
-        const { startDate, displayName, importStarred, sentFolderName } = req.body;
+        const { startDate, displayName, importStarred, sentFolderName, smtp } = req.body;
 
         // Merge with existing settings
         const currentSettings = configService.getSyncSettings();
@@ -393,6 +405,20 @@ router.put('/sync-settings', async (req, res) => {
         };
 
         await configService.saveSetting('sync', updatedSettings);
+
+        // Save SMTP config if provided
+        if (smtp && smtp.host) {
+            const currentSmtp = configService.getSmtpConfig();
+            const updatedSmtp = {
+                host: smtp.host,
+                port: smtp.port || 587,
+                secure: smtp.secure || false,
+                user: smtp.user || currentSmtp?.user || '',
+                // Only update password if provided (non-empty)
+                password: smtp.password || currentSmtp?.password || ''
+            };
+            await configService.saveSetting('smtp', updatedSmtp);
+        }
 
         res.json({
             success: true,
