@@ -1,0 +1,18 @@
+# Electronic Mail on your own server, with its own login:
+#   docker compose up -d
+# then open http://localhost:3100 to choose a login and add your email accounts (README.md).
+# To use it from other computers, put it behind an HTTPS reverse proxy and set SECURE_COOKIES=1.
+# Optional settings, in a .env file beside this one: MAIL_PORT, SECURE_COOKIES, TZ.
+services:
+  mail:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAIL_PORT:-3100}:3100"   # this computer only: a proxy on it reaches Mail here
+    environment:
+      SECURE_COOKIES: ${SECURE_COOKIES:-0}     # 1 once it's served over HTTPS
+      TZ: ${TZ:-UTC}                           # e.g. Europe/London, for dates in notices
+    volumes:
+      - mail-data:/data
+volumes:
+  mail-data:

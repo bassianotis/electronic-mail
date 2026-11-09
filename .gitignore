@@ -1,0 +1,18 @@
+node_modules
+dist
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+
+# engine cache (SQLite + WAL/SHM side files; disposable, rebuilt from the server)
+engine/data/
+
+# The first app's session secret, left behind on older installs
+.jwt-secret
+
+# Your own installation's settings (deploy/install.env.example)
+private/

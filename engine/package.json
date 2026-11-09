@@ -1,0 +1,26 @@
+{
+  "name": "electronic-mail-engine",
+  "private": true,
+  "type": "module",
+  "description": "Electronic Mail's engine (docs/architecture.md). Runs TypeScript directly via Node's type stripping (Node >= 22.18).",
+  "scripts": {
+    "harness:up": "docker compose -f test/dovecot/docker-compose.yml up -d --build --wait",
+    "harness:down": "docker compose -f test/dovecot/docker-compose.yml down",
+    "test": "node --test \"test/**/*.test.{mjs,ts}\"",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "imapflow": "^2.4.0",
+    "mailparser": "^3.9.38",
+    "nodemailer": "10.0.12"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^24.19.2",
+    "typescript": "5.9"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

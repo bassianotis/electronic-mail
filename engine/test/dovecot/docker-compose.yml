@@ -1,0 +1,22 @@
+services:
+  dovecot:
+    build: .
+    image: electronic-mail-test-dovecot:2.3
+    ports:
+      - "127.0.0.1:11143:143"
+    tmpfs:
+      - /srv/mail:uid=1000,gid=1000
+    healthcheck:
+      test: ["CMD-SHELL", "doveadm who >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      retries: 15
+  # Catches outgoing mail in tests: nothing ever reaches a real recipient.
+  mailpit:
+    image: axllent/mailpit:v1.31.2
+    ports:
+      - "127.0.0.1:11025:1025"
+      - "127.0.0.1:11080:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      MP_MAX_MESSAGES: "5000"

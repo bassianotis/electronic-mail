@@ -1,0 +1,1166 @@
+:root {
+    /* Core Palette - Light & Airy */
+    --color-bg: #fdfdfd;
+    --color-bg-subtle: #f4f6f5;
+    --color-text-main: #2c3e50;
+    --color-text-muted: #5f6b6d;
+    --color-primary: #2c3e50;
+    /* Added: maps to text-main for a sleek, dark-navy primary */
+    --color-border: #e0e6ed;
+
+    /* Accent Colors - Vibrant & Distinct */
+    --color-accent-primary: #2ecc71;
+    /* Fresh Green */
+    --color-accent-secondary: #3498db;
+    /* Sky Blue */
+    --color-accent-tertiary: #e67e22;
+    /* Warm Orange */
+    --color-accent-quaternary: #9b59b6;
+    /* Soft Purple */
+
+    /* Semantic Colors */
+    --color-success: #1e8449;
+    --color-warning: #f1c40f;
+    --color-danger: #b91c1c;
+    --color-danger-hover: #991b1b;
+    --color-action: var(--color-primary);
+    /* The one primary action colour: Compose, Send, Save, Log in, Next, Got it */
+    --success-bg: #dcfce7;
+    --toast-success-icon: #6fdc9b;
+    /* The check on the navy notice (the success green would be too dark there) */
+
+    /* Spacing - Generous Whitespace */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+    --space-3xl: 64px;
+
+    /* Typography */
+    --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+    --font-size-3xl: 2rem;
+
+    /* Shadows - Soft & Lifted */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+    --shadow-floating: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+
+    /* Radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 24px;
+    --radius-full: 9999px;
+
+    /* The rest of the Electronic Mail v1 design system's tokens, under its names, so components
+       read every colour from here. Values are exactly what the components used inline. */
+    --color-bg-hover: #e9edeb;
+    --font-size-xs: 0.75rem;
+    --font-size-2xs: 0.625rem;
+
+    /* Surfaces and overlays */
+    --surface-card: #ffffff;
+    --overlay-scrim: rgba(0, 0, 0, 0.4);
+    --dock-glass: rgba(255, 255, 255, 0.8);
+    --sent-card: #f8fff8;
+    --glass-border: rgba(255, 255, 255, 0.4);
+    --dock-glass-border: rgba(255, 255, 255, 0.5);
+    --glass-control: rgba(255, 255, 255, 0.8);
+    --modal-scrim: var(--overlay-scrim);
+    --tour-scrim: var(--overlay-scrim);
+    --message-veil: rgba(255, 255, 255, 0.9);
+    --message-veil-end: rgba(255, 255, 255, 0.7);
+    --message-fade: rgba(255, 255, 255, 0.5);
+    --hover-tint: rgba(0, 0, 0, 0.05);
+
+    /* Pills, badges and actions */
+    --thread-badge: #2563eb;
+    --pill-bg: var(--color-bg-subtle);
+    --pill-border: var(--color-border);
+    --pill-text: var(--color-text-main);
+    --action-indigo: var(--color-action);
+    /* Deprecated: use --color-action */
+    --send-ready: var(--color-action);
+    --send-disabled: #cccccc;
+    --save-dark: var(--color-action);
+    /* Deprecated: use --color-action */
+    --badge-red: var(--color-danger);
+    --menu-danger-hover: #fff0f0;
+    --archive-tile-active: var(--color-text-muted);
+
+    /* Notices */
+    --toast-bg: var(--color-text-main);
+    --toast-error-bg: #7f1d1d;
+    --toast-error-icon: #fca5a5;
+    --toast-action-bg: rgba(255, 255, 255, 0.1);
+    --toast-dismiss: rgba(255, 255, 255, 0.7);
+
+    /* Text */
+    --message-text: #333333;
+    --status-text: var(--color-text-muted);
+    --color-on-accent: #ffffff;
+    --color-on-accent-muted: rgba(255, 255, 255, 0.85);
+
+    /* Reader mode */
+    --reader-bg: #1a1a1a;
+    --reader-text: #e0e0e0;
+    --reader-muted: #b0b0b0;
+    --reader-rule: #333333;
+    --reader-link: #5ba3e0;
+
+    /* Status notes and boxes */
+    --note-warn-bg: #fffbeb;
+    --note-warn-text: #b45309;
+    --note-warn-border: #fde68a;
+    --draft-bg: #fef3c7;
+    --draft-text: #92400e;
+    --error-bg: #fef2f2;
+    --error-text: var(--color-danger);
+    --error-border: #fecaca;
+
+    /* Bucket palette: the New Bucket swatches (a bucket's colour is saved on the server as hex) */
+    --bucket-red: #ff3b30;
+    --bucket-orange: var(--color-accent-tertiary);
+    --bucket-yellow: var(--color-warning);
+    --bucket-green: var(--color-accent-primary);
+    --bucket-blue: var(--color-accent-secondary);
+    --bucket-purple: var(--color-accent-quaternary);
+    --bucket-gray: #95a5a6;
+    --bucket-dark: var(--color-text-main);
+    --mark-ink: #284158;
+
+    /* More shadows */
+    --shadow-lift: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.12);
+    --shadow-message-front: 0 25px 80px rgba(0, 0, 0, 0.3);
+    --shadow-message-back: 0 8px 30px rgba(0, 0, 0, 0.12);
+    --shadow-badge: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --shadow-tour: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --shadow-control: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --shadow-send: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-send-hover: 0 6px 16px rgba(0, 0, 0, 0.15);
+    --shadow-menu: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-selected: 0 4px 12px rgba(44, 62, 80, 0.15);
+
+    /* More radii (recorded only: components still write these inline) */
+    --radius-control: 8px;
+    --radius-tile: var(--radius-md);
+
+    /* Backdrop blur */
+    --blur-overlay: 8px;
+    --blur-dock: 12px;
+    --blur-panel: 20px;
+    --blur-control: 4px;
+    --blur-modal: var(--blur-overlay);
+
+    /* Motion (unslop round 1): one curve, three durations (utils/motion.ts has the same) */
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-fast: 150ms;
+    /* hover, press, toggles */
+    --dur-mid: 200ms;
+    /* menus, popovers, notices */
+    --dur-slow: 350ms;
+    /* entrances, sheets, layout changes */
+
+    /* Theme seams (the Instrument dark trial): what a theme can change that the tokens above
+       couldn't say. In light each is exactly today's value. */
+    --surface-raised: var(--surface-card);
+    /* the reading card, composer, corner window, menus, dialogs, notices, reading bar */
+    --border-strong: var(--color-border);
+    --color-text-faint: var(--color-text-muted);
+    /* dates, previews, help lines */
+    --sender-text: var(--color-text-main);
+    --color-on-success: var(--color-on-accent);
+    --color-on-action: var(--color-on-accent);
+    /* text on --color-action (Send, Save, Log in) */
+    --rail-bg: var(--color-bg-subtle);
+    --rail-edge: var(--color-border);
+    --radius-pill: var(--radius-full);
+    /* pill-shaped bars and buttons (real circles keep --radius-full) */
+    --weight-semibold: 600;
+    --weight-bold: 700;
+    --label-case: uppercase;
+    --label-tracking: 0.05em;
+    --date-numerals: normal;
+    --tag-bg: var(--pill-bg);
+    --tag-border: var(--pill-border);
+    --tag-text: var(--pill-text);
+    --tag-pad: 1px 6px;
+    /* Up next's tags ("Today", a bucket's name) and counts */
+    --thread-badge-text: var(--color-on-accent);
+    --thread-badge-pad: 2px 6px;
+    --draft-pad: 2px 6px;
+    --draft-icon: block;
+    --draft-ring: 0 0 0 3px var(--draft-bg), var(--shadow-sm);
+    --draft-ring-border: var(--color-border);
+    --toast-text: var(--color-on-accent);
+    --toast-border: none;
+    --toast-action-border: none;
+    --compose-bg: var(--color-action);
+    --compose-text: var(--color-on-action);
+    --compose-border: none;
+    --compose-icon: currentColor;
+    --compose-hover: color-mix(in srgb, var(--color-action) 88%, white);
+    /* a bucket or Archive card under the pointer (a colour change, never a lift) */
+    --card-hover-border: #c5ced8;
+    /* an emoji with no line icon yet shows greyscale until one is picked */
+    --dock-emoji-filter: grayscale(1);
+    --dock-emoji-opacity: 0.7;
+    --dock-count-inset: -8px;
+    --dock-count-bg: var(--badge-red);
+    --dock-count-text: var(--color-on-accent);
+    --dock-count-pad: 2px 6px;
+    --dock-count-border: 2px solid var(--surface-card);
+    --shadow-dialog: var(--shadow-lg);
+    --surface-header: var(--color-bg-subtle);
+    /* the corner window's title strip */
+    --selected-bg: var(--color-primary);
+    --selected-border: var(--color-primary);
+    --selected-text: var(--color-on-accent);
+    --selected-subtext: var(--color-on-accent-muted);
+    --unselected-text: var(--color-text-main);
+    /* the picked option of a choice in Settings */
+    --color-on-danger: var(--color-on-accent);
+    --send-disabled-text: var(--color-on-action);
+    --view-thread-bg: var(--pill-bg);
+    --view-thread-border: var(--pill-border);
+    --view-thread-text: var(--pill-text);
+    --view-thread-hover-bg: var(--thread-badge);
+    --view-thread-hover-text: var(--color-on-accent);
+    --archive-button-bg: var(--color-success);
+    --archive-button-text: var(--color-on-success);
+    --archive-button-border: none;
+    --archive-button-icon: currentColor;
+    --quick-archive-icon: var(--color-on-success);
+    /* the box between an opened Inbox card and the email inside it */
+    --opened-body-pad: var(--space-md);
+    --opened-body-bg: var(--surface-card);
+    --opened-body-border: 1px solid var(--color-border);
+    --dock-tile: 56px;
+    --dock-small-tile: 48px;
+    --dock-plus-border: 2px dashed var(--color-border);
+    --dock-plus-text: var(--color-text-muted);
+    --attach-border: 1px solid var(--border-strong);
+    --attach-bg: var(--surface-raised);
+    --swatch-filter: none;
+    --dialog-edge: transparent;
+
+    /* Sizes, in one place (the trial's size switch is gone; these are today's) */
+    --size-app-name: var(--font-size-xl);
+    --size-page-heading: var(--font-size-2xl);
+    --size-card-title: var(--font-size-lg);
+    --size-list-title: var(--font-size-base);
+    --size-sender-line: var(--font-size-sm);
+    --size-list-sender: 1em;
+    --size-date: 1em;
+    --size-list-date: var(--font-size-xs);
+    --size-preview: var(--font-size-sm);
+    --size-upnext-title: var(--font-size-sm);
+    --card-pad: var(--space-lg);
+    --card-gap: var(--space-md);
+    --swatch-size: 32px;
+    /* an outline, so it adds no size: a dialog's edge where light needs none */
+    --input-bg: Field;
+    --input-text: FieldText;
+    /* text fields that kept the browser's own colours */
+    /* dialogs and menus that float over the page */
+    --shadow-corner: 0 8px 32px rgba(0, 0, 0, 0.18);
+    --shadow-corner-lifted: 0 12px 48px rgba(0, 0, 0, 0.22);
+    --bar-bg: var(--dock-glass);
+    /* the bar under a conversation's cards */
+    --drag-handle: rgba(255, 255, 255, 0.85);
+    --drag-handle-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    /* Email bodies: HTML mail with its own colours sits on "paper" (in light, the card itself) */
+    --paper-bg: var(--surface-card);
+    --paper-text: var(--message-text);
+    --paper-filter: none;
+    --paper-pad: 0;
+    --paper-radius: 0;
+    --paper-width: auto;
+    --paper-min-width: 0px;
+    --paper-margin: 0;
+    --paper-shadow: none;
+}
+
+/* Instrument A, "Quiet" (docs: instrument-dark-trial.md), chosen in Settings, Appearance. A trial:
+   colours, weights and surfaces only; layout and behaviour are the same as light. */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    accent-color: var(--color-text-main);
+
+    --color-bg: #141415;
+    --rail-bg: #0f0f10;
+    --rail-edge: transparent;
+    --surface-card: #19191b;
+    --surface-raised: #232325;
+    --color-bg-subtle: var(--surface-card);
+    --color-bg-hover: #28282b;
+    --hover-tint: rgba(255, 255, 255, 0.05);
+    --color-border: rgba(237, 237, 237, 0.08);
+    --border-strong: rgba(237, 237, 237, 0.13);
+
+    /* The base colours: everything else in dark points at these (the design playground, ?playground, sets them) */
+    --color-text-main: #ededed;
+    --color-text-muted: #a1a1a6;
+    --color-text-faint: #8e8e94; /* 4.5:1 or better on every surface, raised and hover included */
+    --sender-text: var(--color-text-muted);
+    --message-text: #d6d6d9;
+    --message-link: var(--color-action);
+    --color-primary: var(--color-text-main);
+    --color-action: #cf9f52;
+    --color-on-action: #17110a;
+    --color-success: #6fb390;
+    --color-on-success: #0e1712;
+    --color-danger: #e0716a;
+    --color-danger-hover: #e8877f;
+    --success-bg: rgba(111, 179, 144, 0.12);
+    --toast-success-icon: #6fb390;
+    --overlay-scrim: rgba(5, 6, 8, 0.6);
+
+    /* No glass: solid surfaces */
+    --dock-glass: var(--surface-card);
+    --dock-glass-border: rgba(237, 237, 237, 0.08);
+    --glass-border: rgba(237, 237, 237, 0.13);
+    --glass-control: var(--surface-raised);
+    --bar-bg: var(--surface-raised);
+    --surface-header: var(--surface-raised);
+    /* a picked option: the raised surface and a hairline ring (amber is kept for the account marker,
+       Compose and Draft) */
+    --selected-bg: var(--surface-raised);
+    --selected-border: var(--border-strong);
+    --selected-text: var(--color-text-main);
+    --unselected-text: var(--color-text-muted); /* so the darker wells don't read as pressed */
+    --selected-subtext: var(--color-text-muted);
+    --color-on-danger: #1a0b0a;
+    --dialog-edge: rgba(237, 237, 237, 0.13);
+    --view-thread-bg: transparent;
+    --view-thread-border: transparent;
+    --view-thread-text: var(--color-text-faint);
+    --view-thread-hover-bg: transparent;
+    --view-thread-hover-text: var(--color-text-main);
+    --archive-button-bg: var(--surface-raised);
+    --archive-button-text: var(--color-text-main);
+    --archive-button-border: 1px solid rgba(237, 237, 237, 0.13);
+    --archive-button-icon: #6fb390;
+    --quick-archive-icon: #6fb390;
+    --opened-body-pad: 0;
+    --opened-body-bg: transparent;
+    --opened-body-border: none;
+    --dock-tile: 50px;
+    --dock-small-tile: 44px;
+    --dock-plus-border: none;
+    --dock-plus-text: var(--color-text-faint);
+    --attach-border: 1px solid transparent;
+    --attach-bg: transparent;
+    /* bucket swatches show muted; what they save (data-hex) doesn't change */
+    --swatch-filter: saturate(0.6) brightness(0.9);
+    /* a thread's other messages: two slivers below its card (lighter than the card, or they don't show) */
+    --stack-near: #212123;
+    --stack-far: #1d1d1f;
+    --input-bg: var(--surface-card);
+    --input-text: var(--color-text-main);
+    --message-veil: rgba(35, 35, 37, 0.9);
+    --message-veil-end: rgba(35, 35, 37, 0.7);
+    --message-fade: rgba(35, 35, 37, 0.5);
+    --sent-card: var(--surface-card);
+    --blur-overlay: 0px;
+    --blur-dock: 0px;
+    --blur-panel: 0px;
+    --blur-control: 0px;
+
+    /* Tags and counts are plain text */
+    --tag-bg: transparent;
+    --tag-border: transparent;
+    --tag-text: var(--color-text-faint);
+    --tag-pad: 0;
+    --pill-bg: rgba(255, 255, 255, 0.05);
+    --pill-border: rgba(237, 237, 237, 0.13);
+    --pill-text: var(--color-text-main);
+    --thread-badge: transparent;
+    --thread-badge-text: var(--color-text-faint);
+    --thread-badge-pad: 0;
+    --draft-bg: transparent;
+    --draft-text: var(--color-action);
+    --draft-pad: 0;
+    --draft-icon: none;
+    --draft-ring: none;
+    --draft-ring-border: var(--color-action);
+
+    --send-disabled: #2c2c2f;
+    --send-disabled-text: var(--color-text-muted);
+    --menu-danger-hover: rgba(224, 113, 106, 0.12);
+    --compose-bg: var(--surface-raised);
+    --compose-text: var(--color-text-main);
+    --compose-border: 1px solid rgba(237, 237, 237, 0.13);
+    --compose-icon: var(--color-action);
+    --compose-hover: var(--color-bg-hover);
+    --card-hover-border: var(--border-strong);
+    --dock-emoji-filter: grayscale(1);
+    --dock-emoji-opacity: 0.55;
+    /* Dock tiles: no bucket colours; the count is a plain faint number in the tile's corner */
+    --dock-tile-active: var(--color-bg-hover);
+    --dock-tile-active-text: var(--color-text-main);
+    --dock-tile-text: var(--color-text-muted);
+    --dock-tile-ring: 0 0 0 0 transparent;
+    --bucket-title: var(--color-text-main);
+    --archive-tile-active: var(--color-bg-hover);
+    --dock-count-inset: 4px;
+    --dock-count-bg: transparent;
+    --dock-count-text: var(--color-text-faint);
+    --dock-count-pad: 0 3px;
+    --dock-count-border: none;
+
+    /* Notices: a raised surface with a border; the action is a neutral button */
+    --toast-bg: var(--surface-raised);
+    --toast-text: var(--color-text-main);
+    --toast-border: 1px solid rgba(237, 237, 237, 0.13);
+    --toast-error-bg: #2a1817;
+    --toast-error-icon: #e0716a;
+    --toast-action-bg: rgba(255, 255, 255, 0.04);
+    --toast-action-border: 1px solid rgba(237, 237, 237, 0.13);
+    --toast-dismiss: var(--color-text-muted);
+
+    --reader-bg: var(--surface-card);
+    --reader-text: var(--message-text);
+    --reader-muted: var(--color-text-muted);
+    --reader-rule: rgba(237, 237, 237, 0.13);
+    --reader-link: var(--color-action);
+
+    --note-warn-bg: color-mix(in srgb, var(--color-action) 10%, transparent);
+    --note-warn-text: var(--color-action);
+    --note-warn-border: color-mix(in srgb, var(--color-action) 30%, transparent);
+    --error-bg: rgba(224, 113, 106, 0.10);
+    --error-border: rgba(224, 113, 106, 0.30);
+
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 8px;
+    --radius-control: 6px;
+    --radius-pill: 6px;
+    --weight-semibold: 500;
+    --weight-bold: 500;
+    --label-case: none;
+    --label-tracking: normal;
+    --date-numerals: tabular-nums;
+
+    /* Shadows don't show on dark: only menus, the corner window and dialogs keep one */
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
+    --shadow-floating: none;
+    --shadow-lift: none;
+    /* the reading card and the older cards' edges: a hairline instead of a shadow */
+    --shadow-message-front: 0 0 0 1px rgba(237, 237, 237, 0.13);
+    --shadow-message-back: 0 0 0 1px rgba(237, 237, 237, 0.08);
+    --shadow-badge: none;
+    --shadow-control: none;
+    --shadow-send: none;
+    --shadow-send-hover: none;
+    --shadow-selected: none;
+    --shadow-panel: 0 14px 40px rgba(0, 0, 0, 0.5);
+    --shadow-dialog: 0 14px 40px rgba(0, 0, 0, 0.5);
+
+    /* A bucket's colour is saved as the swatch's hex (CreateBucketModal reads it back from the
+       variable), so the palette keeps its light values: only --bucket-dark pointed at a token
+       that changes here. */
+    --bucket-dark: #2c3e50;
+    --shadow-menu: 0 14px 40px rgba(0, 0, 0, 0.5);
+    --shadow-tour: 0 14px 40px rgba(0, 0, 0, 0.5);
+    --shadow-corner: 0 14px 40px rgba(0, 0, 0, 0.5);
+    --shadow-corner-lifted: 0 14px 40px rgba(0, 0, 0, 0.5);
+    --drag-handle: rgba(255, 255, 255, 0.22);
+    --drag-handle-shadow: none;
+
+    /* HTML mail keeps its own colours on a white sheet under a warm lamp ("lamplit paper"): as wide as
+       the email itself (a newsletter's 600-700px, the full width when it's wider), centred, lifted */
+    --paper-bg: #ffffff;
+    --paper-text: #333333;
+    --paper-filter: brightness(0.86) sepia(0.14) saturate(0.92);
+    --paper-pad: 16px 20px;
+    --paper-radius: 4px;
+    --paper-width: fit-content;
+    --paper-min-width: min(600px, 100%);
+    --paper-margin: 4px auto 20px; /* 20px under the header (with the body's 16px), 24px at the sides */
+    --paper-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* Appearance, Font: Inter (self-hosted "Inter Variable"), in either theme; System is the default */
+:root[data-font="inter"] {
+    --font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+}
+
+/* Dark: Up next's row scrolls without the browser's grey bar; a thin dark thumb shows while it's hovered.
+   Chrome doesn't repaint a custom scrollbar on the row's :hover, so the thumb is drawn with the row's
+   border colour (the row has no border), which does repaint when it changes. */
+:root[data-theme="dark"] .upnext-row {
+    border-color: transparent;
+}
+
+:root[data-theme="dark"] .upnext-row:hover {
+    border-color: #2a2b30;
+}
+
+:root[data-theme="dark"] .upnext-row::-webkit-scrollbar {
+    height: 6px;
+    background: transparent;
+}
+
+:root[data-theme="dark"] .upnext-row::-webkit-scrollbar-thumb {
+    border: 3px solid;
+    border-color: inherit;
+    border-radius: 3px;
+    background: transparent;
+}
+
+/* Dark: a thread's other messages are two fill-only slivers peeking below its card (shadows, which the
+   card's own overflow doesn't clip) instead of the outlined cards behind it */
+:root[data-theme="dark"] .thread-stack::before,
+:root[data-theme="dark"] .thread-stack::after {
+    display: none;
+}
+
+:root[data-theme="dark"] .thread-stack {
+    box-shadow: 0 12px 0 -8px var(--stack-near), 0 24px 0 -16px var(--stack-far) !important; /* 8px and 16px in, 4px each below */
+}
+
+:root[data-theme="dark"] .thread-stack-pair {
+    box-shadow: 0 12px 0 -8px var(--stack-near) !important;
+}
+
+/* Dark: no browser blue. Focus rings, selected text and autofilled fields use the theme's colours */
+:root[data-theme="dark"] :focus-visible {
+    outline: 2px solid var(--color-action);
+    outline-offset: 1px;
+}
+
+:root[data-theme="dark"] ::selection {
+    background: color-mix(in srgb, var(--color-action) 35%, transparent);
+}
+
+:root[data-theme="dark"] input:-webkit-autofill,
+:root[data-theme="dark"] input:-webkit-autofill:hover,
+:root[data-theme="dark"] input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-text-main);
+    -webkit-box-shadow: 0 0 0 1000px var(--color-bg-subtle) inset;
+    caret-color: var(--color-text-main);
+}
+
+/* Dark: the dock's slim bar (BucketsDock): a row's fill on hover */
+.dock-row:hover {
+    background: var(--color-bg-hover);
+}
+
+/* Edit bucket's icon picker: a cell's fill on hover */
+.icon-cell:hover {
+    background: var(--color-bg-hover) !important;
+    color: var(--color-text-main) !important;
+}
+
+/* The rail: a shade darker, no edge line; the open account is a 2px amber bar on its inner edge */
+/* (in dark every tab is 32 wide and none moves) */
+:root[data-theme="dark"] .account-tab {
+    width: 32px;
+    transform: none;
+}
+
+:root[data-theme="dark"] .account-tab[aria-selected="true"] {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: inset -2px 0 0 var(--color-action);
+    border-radius: 0;
+}
+
+/* Icons: one set (lucide) at one stroke (the attribute each icon sets is overridden here) */
+.lucide {
+    stroke-width: 1.5;
+}
+
+/* Loading spinners: the Loader icon with className="animate-spin" */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Skeletons (Loading/Skeletons.tsx): shapes in the real component's frame, pulsing while they wait */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.skeleton-bone {
+    display: block;
+    background-color: var(--color-border);
+    border-radius: var(--radius-full);
+    animation: pulse 1.6s ease-in-out infinite;
+}
+
+/* The first sync's pulsing dot, beside the Inbox heading */
+.sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--color-action);
+    animation: pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton-bone,
+    .sync-dot {
+        animation: none;
+    }
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* The base text size: set only by the design playground (?playground); 100% is the browser's */
+html {
+    font-size: var(--base-size, 100%);
+}
+
+body {
+    font-family: var(--font-family);
+    background-color: var(--color-bg);
+    color: var(--color-text-main);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+}
+
+/* Utilities */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+}
+
+.flex-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.text-muted {
+    color: var(--color-text-muted);
+}
+
+/* Thread Stack - stacked card effect for email threads */
+.thread-stack {
+    isolation: isolate;
+    margin-bottom: 8px;
+}
+
+.thread-stack::before,
+.thread-stack::after {
+    content: '';
+    position: absolute;
+    background: inherit;
+    border: 1px solid var(--color-border);
+    border-radius: inherit;
+    z-index: -1;
+}
+
+.thread-stack::before {
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    bottom: -4px;
+    transform: rotate(0.8deg);
+}
+
+.thread-stack::after {
+    top: 8px;
+    left: 4px;
+    right: 4px;
+    bottom: -4px;
+    transform: rotate(-0.5deg);
+}
+
+.thread-stack-pair::after {
+    display: none;
+}
+
+/* Up next: the slivers hang into the strip's bottom padding; every card keeps the slot's height */
+.upnext-card.thread-stack {
+    margin-bottom: 0;
+}
+
+/* "Can't reach the server" (ServerBanner.tsx): a 40px band right of the rail. Everything under it
+   moves down by --server-banner: the page column slides (transform), the overlays start below it. */
+:root {
+    --server-banner: 0px;
+}
+
+.server-banner {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 350;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 24px;
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border-strong);
+    font-size: 13.5px;
+}
+
+.server-banner-try {
+    margin-left: auto;
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    background: var(--surface-card);
+    color: var(--color-text-main);
+    font-size: 13px;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+
+.server-banner-try:hover {
+    background: var(--color-bg-hover);
+}
+
+/* Only while the band shows: a transform (even translateY(0)) would make fixed elements inside, like
+   a dragged card, position against the page instead of the window */
+.below-server-banner {
+    transition: transform var(--dur-mid) var(--ease);
+}
+
+:root[data-server-banner] .below-server-banner {
+    transform: translateY(var(--server-banner));
+}
+
+/* An action that needs the server, while it can't be reached */
+.needs-server:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .below-server-banner {
+        transition: none;
+    }
+}
+
+/* "Images hidden · Load images" (ImagesStrip.tsx): in the reading card's chrome, one step below the card */
+.images-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    padding: 0 24px;
+    background: var(--surface-card);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13.5px;
+    color: var(--color-text-muted);
+}
+
+/* Inside an Inbox card (already the card surface): a rounded row above the body */
+.images-strip-inline {
+    padding: 0 16px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
+}
+
+.images-strip-load {
+    padding: 4px 6px;
+    margin-left: -6px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--color-text-main);
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+
+.images-strip-load:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+}
+
+.images-strip-load:disabled {
+    color: var(--color-text-faint);
+    opacity: 1;
+}
+
+/* Reader mode's placeholders (Reader content is in the page, not a frame) */
+.reader-content .em-ph {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 4px 0;
+    vertical-align: middle;
+    background: var(--surface-card);
+    border: 1px dashed color-mix(in srgb, var(--color-text-main) 18%, transparent);
+    border-radius: 4px;
+    color: var(--color-text-faint);
+    font-size: 13px;
+    line-height: 1.3;
+}
+
+.reader-content .em-ph-label {
+    max-width: 90%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Signed out while using Mail (SignedOutDialog.tsx): over everything, on a darker scrim */
+.signed-out-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 6, 7, 0.72);
+}
+
+.signed-out-dialog {
+    width: 440px;
+    max-width: calc(100% - 32px);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+    color: var(--color-text-main);
+}
+
+.signed-out-dialog h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 500;
+}
+
+.signed-out-dialog p {
+    margin: 0;
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+}
+
+.signed-out-button {
+    height: 40px;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: var(--color-action);
+    color: var(--color-on-action);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.signed-out-caption {
+    font-size: 13px;
+    color: var(--color-text-faint);
+}
+
+/* Bucket and Archive cards on hover: the border steps up (no lift) */
+.em-card {
+    transition: border-color var(--dur-fast) var(--ease);
+}
+
+.em-card:hover {
+    border-color: var(--card-hover-border) !important;
+}
+
+/* Up next: a card's quick Archive shows on hover and on keyboard focus within the card */
+.upnext-card .upnext-archive {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+
+.upnext-card:hover .upnext-archive,
+.upnext-card:focus-within .upnext-archive {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .upnext-card .upnext-archive {
+        transition: none;
+    }
+}
+
+/* A recipient chip with an address that won't send, when Send has taken the focus to it */
+[data-invalid-recipient]:focus {
+    outline: 2px solid var(--color-danger);
+    outline-offset: 1px;
+}
+
+/* Older / newer in a conversation's front card (Views/MessageCard.tsx) */
+.thread-nav button:not([aria-disabled="true"]):hover {
+    background: var(--color-bg-subtle);
+}
+
+/* The account rail's tabs (Layout/AccountRail.tsx): the open one joins the page */
+.account-tab {
+    writing-mode: vertical-rl;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 16px 0;
+    /* One width; a closed tab slides 4px out of the rail (which clips it), so opening one moves it
+       with a transform instead of animating its width */
+    width: 36px;
+    transform: translateX(4px);
+    border: 1px solid transparent;
+    border-radius: var(--radius-control) 0 0 var(--radius-control);
+    background: transparent;
+    color: var(--color-text-muted);
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.account-tab:hover {
+    color: var(--color-text-main);
+}
+
+.account-tab[aria-selected="true"] {
+    transform: none;
+    background: var(--color-bg);
+    color: var(--color-text-main);
+    border-color: var(--color-border);
+    border-right-color: var(--color-bg);
+    box-shadow: -2px 0 4px rgba(0, 0, 0, 0.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .account-tab {
+        transition: none;
+    }
+}
+
+/* Reader Mode Content Styling */
+.reader-content p {
+    margin-bottom: 1.4em;
+}
+
+.reader-content h1,
+.reader-content h2,
+.reader-content h3,
+.reader-content h4,
+.reader-content h5,
+.reader-content h6 {
+    margin-top: 1.5em;
+    margin-bottom: 0.75em;
+    font-weight: 600 !important;
+    line-height: 1.3 !important;
+    color: inherit !important;
+    font-family: inherit !important;
+}
+
+.reader-content h1 {
+    font-size: 2em !important;
+}
+
+.reader-content h2 {
+    font-size: 1.75em !important;
+}
+
+.reader-content h3 {
+    font-size: 1.5em !important;
+}
+
+.reader-content h4 {
+    font-size: 1.25em !important;
+}
+
+.reader-content h5 {
+    font-size: 1.1em !important;
+}
+
+.reader-content h6 {
+    font-size: 1em !important;
+}
+
+.reader-content a {
+    color: var(--reader-link) !important;
+    text-decoration: underline !important;
+    text-decoration-color: rgba(91, 163, 224, 0.3) !important;
+    text-underline-offset: 2px !important;
+}
+
+:root[data-theme="dark"] .reader-content a {
+    text-decoration-color: color-mix(in srgb, var(--color-action) 35%, transparent) !important;
+}
+
+.reader-content a:hover {
+    text-decoration-color: var(--reader-link) !important;
+}
+
+.reader-content strong,
+.reader-content b {
+    font-weight: 600 !important;
+}
+
+/* Italic only where the email itself uses <em> or <i>: not from its inline styles, cite or blockquote */
+.reader-content :not(em, i, em *, i *) {
+    font-style: normal !important;
+}
+
+.reader-content em,
+.reader-content i {
+    font-style: italic !important;
+}
+
+.reader-content blockquote {
+    margin: 1.5em 0 !important;
+    padding-left: 1.5em !important;
+    border-left: 4px solid var(--reader-link) !important;
+    color: inherit !important;
+    font-family: inherit !important;
+}
+
+.reader-content blockquote * {
+    color: inherit !important;
+    font-family: inherit !important;
+}
+
+.reader-content img {
+    max-width: 100% !important;
+    height: auto !important;
+    margin: 2em auto !important;
+    border-radius: 8px !important;
+    display: block !important;
+}
+
+.reader-content ul,
+.reader-content ol {
+    margin: 1em 0;
+    padding-left: 2em;
+}
+
+.reader-content li {
+    margin-bottom: 0.5em;
+}
+
+/* Custom Scrollbar for Reader Mode */
+.reader-scroll-container::-webkit-scrollbar {
+    width: 12px;
+}
+
+.reader-scroll-container::-webkit-scrollbar-track {
+    background: var(--reader-bg);
+}
+
+.reader-scroll-container::-webkit-scrollbar-thumb {
+    background-color: #666;
+    border-radius: 6px;
+    border: 3px solid var(--reader-bg);
+}
+
+.reader-scroll-container::-webkit-scrollbar-thumb:hover {
+    background-color: #888;
+}
+
+/* Explore 2: small round icon buttons and the buttons inside pills show a tint on hover */
+.em-icon-button:hover {
+    background: var(--color-bg-subtle) !important;
+}
+
+.em-pill-button:hover {
+    background: var(--hover-tint) !important;
+}
+
+/* The error screen (ErrorBoundary): light as it always was; dark takes the theme's page, text and button */
+.crash-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 20px;
+    background-color: #f8f9fa;
+    color: #333;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.crash-title {
+    font-size: 24px;
+    margin-bottom: 16px;
+    color: #e03131;
+}
+
+.crash-detail {
+    padding: 16px;
+    background-color: var(--surface-card);
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    margin-bottom: 24px;
+    max-width: 600px;
+    width: 100%;
+    overflow: auto;
+    max-height: 200px;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.crash-reload {
+    padding: 8px 20px;
+    background-color: #228be6;
+    color: var(--color-on-accent);
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+}
+
+:root[data-theme="dark"] .crash-screen {
+    background-color: var(--color-bg);
+    color: var(--color-text-main);
+}
+
+:root[data-theme="dark"] .crash-title {
+    font-weight: var(--weight-semibold);
+    color: var(--color-danger);
+}
+
+:root[data-theme="dark"] .crash-detail {
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
+}
+
+:root[data-theme="dark"] .crash-reload {
+    background-color: var(--color-action);
+    color: var(--color-on-action);
+    border-radius: var(--radius-control);
+}
