@@ -55,8 +55,11 @@ Then open http://localhost:3100. The first time, it asks you to choose a login, 
   The mail itself stays on your mail server, and the cache rebuilds itself.
 - **A forgotten passphrase** is reset on the machine itself (there's no reset by email): `docker compose exec -it mail node engine/bin/set-passphrase.ts <username>`.
 
-### With the Bassapps sign-in, on a Raspberry Pi
-This is how the author runs it: Mail beside [Bassapps](https://github.com/bassianotis/bassapps), one sign-in for a family of self-hosted apps, behind Nginx Proxy Manager.
+### With one sign-in for several apps
+[Bassapps](https://github.com/bassianotis/bassapps) is one sign-in, with an Account page, for a family of self-hosted apps. To run Mail behind it, use Bassapps' own `compose.yml` instead: it starts both with one command. Its README, "Run it with Mail", has the steps.
+
+### How the author runs it: a Raspberry Pi, with Bassapps
+Mail and Bassapps run on a Pi behind Nginx Proxy Manager, each built on another computer and shipped over SSH.
 - `tools/ship-pi.sh` builds the image on your computer, sends it to the Pi over SSH, backs up, starts it and waits until it's healthy (`--back` returns to the version before). Ship Bassapps first, with its own `tools/ship-pi.sh`.
 - Its settings (the Pi, the logins Mail accepts, the sign-in's address) go in `private/install.env`: copy `deploy/install.env.example` there. Git leaves `private/` alone.
 - `deploy/pi/` has the compose file and a nightly backup script for cron.
