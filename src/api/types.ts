@@ -73,6 +73,9 @@ export interface MessageBody {
     attachments: AttachmentInfo[];
     listUnsubscribe: string | null;
     listUnsubscribePost: string | null;
+    /** With List-Unsubscribe, these mark mail sent to a list (shown on paper: utils/mailLook.ts). */
+    listId: string | null;
+    precedence: string | null;
 }
 
 export type FolderRole = 'inbox' | 'bucket' | 'archive' | 'sent' | 'drafts' | 'junk' | 'trash' | 'other';

@@ -7,7 +7,6 @@ import { BucketSelector } from './BucketSelector';
 import { api, acct, errorText, urls } from '../../api/client';
 import { useFamily } from '../../api/family';
 import type { AccountSettings } from '../../api/types';
-import { setDragStyle, setFont, setTheme, useDragStyle, useFont, useTheme, type DragStyle, type Font, type Theme } from '../../utils/theme';
 
 /** Nested radius: controls sit 24px (or more) inside the dialog's corner, so inner = outer − padding
  * gives them the 4px minimum. */
@@ -59,55 +58,6 @@ const TabNameField: React.FC = () => {
             <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
                 Shown on this account’s tab. Up to {TAB_NAME_MAX} characters.
             </p>
-        </div>
-    );
-};
-
-/** Appearance (the Instrument dark trial): theme, font and (in dark) drag, each remembered by this browser only. */
-const AppearanceSection: React.FC = () => {
-    const theme = useTheme();
-    const font = useFont();
-    const drag = useDragStyle();
-    const choice = <T extends string>(label: string, value: T, options: [T, string][], set: (v: T) => void) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ width: '56px', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>{label}</span>
-            <div role="radiogroup" aria-label={label} style={{ display: 'flex', gap: '8px', flex: 1, maxWidth: '280px' }}>
-                {options.map(([v, text]) => (
-                    <button
-                        key={v}
-                        type="button"
-                        role="radio"
-                        aria-checked={value === v}
-                        onClick={() => set(v)}
-                        style={{
-                            flex: 1,
-                            padding: '8px 12px',
-                            borderRadius: INNER_RADIUS,
-                            border: `1px solid ${value === v ? 'var(--selected-border)' : 'var(--border-strong)'}`,
-                            backgroundColor: value === v ? 'var(--selected-bg)' : 'var(--color-bg-subtle)',
-                            color: value === v ? 'var(--selected-text)' : 'var(--unselected-text)',
-                            fontSize: 'var(--font-size-sm)',
-                            fontWeight: 500,
-                            cursor: 'pointer'
-                        }}
-                    >
-                        {text}
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-    return (
-        <div style={{ marginBottom: '32px', paddingBottom: '32px', borderBottom: '1px solid var(--color-border)' }}>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: 'var(--font-size-base)', fontWeight: 'var(--weight-semibold)' }}>Appearance</h3>
-            <p style={{ margin: '0 0 12px 0', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
-                On this browser only
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {choice<Theme>('Theme', theme, [['light', 'Light'], ['dark', 'Dark']], setTheme)}
-                {choice<Font>('Font', font, [['system', 'System'], ['inter', 'Inter']], setFont)}
-                {theme === 'dark' && choice<DragStyle>('Drag', drag, [['current', 'Current'], ['new', 'New']], setDragStyle)}
-            </div>
         </div>
     );
 };
@@ -593,8 +543,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         {/* Content - Scrollable List */}
                         <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
 
-                            <AppearanceSection />
-
+                            
                             {/* Section: Email Rules */}
                             <div style={{ marginBottom: '0' }}>
                                 <div style={{ marginBottom: '16px' }}>

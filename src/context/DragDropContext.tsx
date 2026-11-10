@@ -1,16 +1,13 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 
 interface DragDropActions {
     setIsDragging: (isDragging: boolean) => void;
     setHoveredBucketId: (id: string | null) => void;
-    /** A card has just landed on `target` ("New" drag): its row flashes and its count ticks up. */
-    land: (target: string) => void;
 }
 
 interface DragDropState {
     isDragging: boolean;
     hoveredBucketId: string | null;
-    landed: { target: string; at: number } | null;
 }
 
 // Two contexts: the cards only start drags (the actions never change), so a drag's state changing
@@ -21,10 +18,8 @@ const StateContext = createContext<DragDropState | undefined>(undefined);
 export const DragDropProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [hoveredBucketId, setHoveredBucketId] = useState<string | null>(null);
-    const [landed, setLanded] = useState<{ target: string; at: number } | null>(null);
-    const land = useCallback((target: string) => setLanded({ target, at: Date.now() }), []);
-    const actions = useMemo(() => ({ setIsDragging, setHoveredBucketId, land }), [land]);
-    const state = useMemo(() => ({ isDragging, hoveredBucketId, landed }), [isDragging, hoveredBucketId, landed]);
+    const actions = useMemo(() => ({ setIsDragging, setHoveredBucketId }), []);
+    const state = useMemo(() => ({ isDragging, hoveredBucketId }), [isDragging, hoveredBucketId]);
 
     return (
         <ActionsContext.Provider value={actions}>

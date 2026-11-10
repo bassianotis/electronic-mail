@@ -128,7 +128,7 @@ const ThreadCardItem: React.FC<{ item: UpNextThread; bucketIds: string[]; onOpen
     const [lifted, setLifted] = useState<DOMRect | null>(null);
     const [overTarget, setOverTarget] = useState(false);
     const t = item.thread;
-    const look = useDragLook(t.subject ?? '', slotRef);
+    const look = useDragLook(slotRef);
 
     return (
         <div ref={slotRef} style={slotStyle}>
@@ -139,14 +139,12 @@ const ThreadCardItem: React.FC<{ item: UpNextThread; bucketIds: string[]; onOpen
                 dragElastic={0.1}
                 dragMomentum={false}
                 onPointerDownCapture={look.grab}
-                onDragStart={(_e, info) => {
+                onDragStart={() => {
                     dragged.current = true;
                     setLifted(slotRef.current?.getBoundingClientRect() ?? null);
                     setIsDragging(true);
-                    look.start(info.point);
                 }}
                 onDrag={(_e, info) => {
-                    look.move(info.point);
                     const to = dropTargetAt(info.point, bucketIds, true);
                     setHoveredBucketId(to);
                     setOverTarget(to !== null);
@@ -161,7 +159,6 @@ const ThreadCardItem: React.FC<{ item: UpNextThread; bucketIds: string[]; onOpen
                 }}
                 onDragTransitionEnd={() => setLifted(null)}
                 onUpdate={noNativeAnimation}
-                animate={{ opacity: look.hidden ? 0 : 1 }}
                 whileDrag={look.whileDrag({
                     scale: 0.4,
                     opacity: overTarget ? 0.15 : 0.5,

@@ -1,10 +1,12 @@
 /**
- * "Images hidden · Load images": a row in the card's own chrome,
- * between the sender row and the body, never on the paper sheet, so a sender can't fake it. Shown
- * only when the message has outside images. The right side stays empty for "Always for this sender".
+ * "Images hidden · Load images": a row in the card's own chrome, between the sender row and the
+ * body, never on the paper sheet, so a sender can't fake it. Shown only when the message has
+ * outside images. Once they're loaded it stays, quieter, as "Images loaded", so images showing is
+ * never a mystery (a screen reader hears it once, as it happens). The right side stays empty for
+ * "Always for this sender".
  */
 import React from 'react';
-import { ImageOff, Loader2 } from 'lucide-react';
+import { Image, ImageOff, Loader2 } from 'lucide-react';
 import { useServerUnreachable } from '../../api/reachability';
 
 export type ImagesState = 'hidden' | 'loading' | 'loaded';
@@ -17,10 +19,14 @@ export const ImagesStrip: React.FC<{
 }> = ({ state, onLoad, variant = 'card' }) => {
     // Loading images is one of the actions that wait while the server can't be reached
     const offline = useServerUnreachable();
-    if (state === 'loaded') return null;
     return (
-        <div role="status" className={`images-strip images-strip-${variant}`}>
-            {state === 'loading' ? (
+        <div role="status" className={`images-strip images-strip-${variant}${state === 'loaded' ? ' images-strip-loaded' : ''}`}>
+            {state === 'loaded' ? (
+                <>
+                    <Image size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
+                    <span>Images loaded</span>
+                </>
+            ) : state === 'loading' ? (
                 <>
                     <Loader2 size={14} className="animate-spin" aria-hidden="true" />
                     <span>Loading images…</span>

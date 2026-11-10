@@ -81,7 +81,8 @@ Status: ✅ passing · ⬜ not yet written
 | list-refused-transiently | 6 | ⬜ |
 | restart-mid-sync-resumes-from-checkpoint (ours) | 6 | ⬜ |
 | restart-resumes-pending-task (ours) | 6 | ✅ |
-| auth-failure-stops-retrying (ours: protects against the host's brute-force lockout) | 6 | ✅ |
+| auth-failure-waits-long-before-retrying (ours: protects against the host's brute-force lockout) | 6 | ✅ |
+| auth-failure-recovers-when-accepted-again (ours: one login per wait, then back online with IDLE) | 6 | ✅ |
 | background-check-finds-changes-in-other-folders (ours) | 5 | ✅ |
 | verification-repairs-drifted-cache (ours: daily deep scan) | 4 | ✅ |
 | queued-move-confirmed-within-2s (ours) | 8 | ✅ |

@@ -17,8 +17,6 @@ import { setOpenThread } from './utils/currentView';
 import { Login } from './components/Auth/Login';
 import { StartFrame } from './components/Loading/StartFrame';
 import { FLOATING_WIDTH } from './utils/layout';
-import { AnimationProvider } from './context/AnimationContext';
-import { DragPillLayer } from './components/DragPill';
 // The design playground (?playground): loaded, with its font, only when the address asks for it
 const Playground = lazy(() => import('./components/Playground'));
 const PLAYGROUND = new URLSearchParams(window.location.search).has('playground');
@@ -123,15 +121,13 @@ function App() {
     return (
         <>
             <div inert={sessionEnded || !!signedOut} aria-hidden={sessionEnded || !!signedOut || undefined}>
-                <AnimationProvider>
-                    <MailProvider>
-                        <ComposerProvider>
-                            <DragDropProvider>
-                                <AppContent showOnboarding={showOnboarding} setShowOnboarding={setShowOnboarding} />
-                            </DragDropProvider>
-                        </ComposerProvider>
-                    </MailProvider>
-                </AnimationProvider>
+                <MailProvider>
+                    <ComposerProvider>
+                        <DragDropProvider>
+                            <AppContent showOnboarding={showOnboarding} setShowOnboarding={setShowOnboarding} />
+                        </DragDropProvider>
+                    </ComposerProvider>
+                </MailProvider>
             </div>
             {signedOut && <SignedOutDialog reason={signedOut.reason} />}
             {sessionEnded && (
@@ -366,7 +362,6 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
 
             <ServerBanner />
             <ToastHost />
-            <DragPillLayer />
             {PLAYGROUND && <Suspense fallback={null}><Playground /></Suspense>}
         </>
     );

@@ -58,6 +58,10 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
     if (step.index !== selectedIndex) setStep({ index: selectedIndex, direction: selectedIndex > step.index ? -1 : 1 });
     const direction = step.direction;
 
+    // Original, once turned on, stays on as you step through this conversation (owner, 2026-11-10);
+    // the view is remade for each conversation, so the next one starts without it.
+    const [showOriginal, setShowOriginal] = useState(false);
+
     // One card per scroll gesture; the message scrolls first, and a gesture that was scrolling it
     // doesn't flip the card when it reaches the end (a new gesture does).
     const lastWheelTime = useRef(0);
@@ -163,6 +167,8 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
                         dateLabel={dateLabel?.(front)}
                         linkCopied={linkCopied}
                         onCopyLink={onCopyLink}
+                        showOriginal={showOriginal}
+                        onShowOriginal={setShowOriginal}
                         nav={emails.length > 1 ? {
                             older,
                             newer,

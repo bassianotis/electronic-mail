@@ -6,9 +6,9 @@
  * (utils/motion.ts).
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import '@fontsource-variable/inter';
 import '@fontsource-variable/ibm-plex-sans';
 import '@fontsource-variable/source-sans-3';
-import { useTheme } from '../utils/theme';
 
 type Kind = 'colour' | 'px' | 'select';
 interface Control {
@@ -16,7 +16,7 @@ interface Control {
     group: string;
     label: string;
     kind: Kind;
-    /** The variables it writes; darkVars only in the dark theme. */
+    /** The variables it writes (darkVars: more it writes alongside) */
     vars: string[];
     darkVars?: string[];
     min?: number;
@@ -99,21 +99,20 @@ function readDefaults(): Record<string, string> {
 const cssValue = (c: Control, v: string) => (c.kind === 'px' ? `${v}px` : v);
 
 export default function Playground() {
-    const theme = useTheme();
     const [open, setOpen] = useState(true);
     const [defaults, setDefaults] = useState<Record<string, string>>({});
     const [changed, setChanged] = useState<Record<string, string>>({});
     const [snippet, setSnippet] = useState<string | null>(null);
 
-    const varsOf = useCallback((c: Control) => [...c.vars, ...(theme === 'dark' ? c.darkVars ?? [] : [])], [theme]);
+    const varsOf = useCallback((c: Control) => [...c.vars, ...(c.darkVars ?? [])], []);
 
-    // Today's values for this theme, read with the playground's own values lifted for a moment
+    // Today's values, read with the playground's own values lifted for a moment
     useEffect(() => {
         const saved = CONTROLS.flatMap(c => [...c.vars, ...(c.darkVars ?? [])]).map(v => [v, root().style.getPropertyValue(v)] as const);
         for (const [v] of saved) root().style.removeProperty(v);
         setDefaults(readDefaults()); // eslint-disable-line react-hooks/set-state-in-effect -- read off the page as it is
         for (const [v, value] of saved) if (value) root().style.setProperty(v, value);
-    }, [theme]);
+    }, []);
 
     const set = (c: Control, value: string) => {
         setChanged(prev => ({ ...prev, [c.key]: value }));
@@ -136,8 +135,7 @@ export default function Playground() {
             c.key === 'ease'
                 ? changed.ease ? [`    /* one curve for every transition */`, `    --ease: ${changed.ease};`] : []
                 : varsOf(c).map(v => `    ${v}: ${cssValue(c, changed[c.key])};`));
-        const scope = theme === 'dark' ? ':root[data-theme="dark"]' : ':root';
-        const text = lines.length ? `/* Design playground, ${theme} theme */\n${scope} {\n${lines.join('\n')}\n}` : '/* Design playground: nothing changed */';
+        const text = lines.length ? `/* Design playground */\n:root {\n${lines.join('\n')}\n}` : '/* Design playground: nothing changed */';
         setSnippet(text);
         navigator.clipboard?.writeText(text).catch(() => {});
     };

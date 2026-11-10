@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Search, Settings, PenSquare } from 'lucide-react';
 import { useDragDrop } from '../../context/DragDropContext';
 import { useMail } from '../../context/MailContext';
 import { useConnection } from '../../api/events';
 import { SettingsModal } from '../Rules/SettingsModal';
-import { useTheme } from '../../utils/theme';
 
 interface TopNavbarProps {
     onSearchClick: () => void;
@@ -13,16 +12,7 @@ interface TopNavbarProps {
 }
 
 export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate, onComposeClick }) => {
-    const { hoveredBucketId, landed } = useDragDrop();
-    const dark = useTheme() === 'dark';
-    // A card landing on the app name ("New" drag) flashes it
-    const [flashing, setFlashing] = useState(false);
-    useEffect(() => {
-        if (landed?.target !== 'inbox') return;
-        setFlashing(true); // eslint-disable-line react-hooks/set-state-in-effect -- a timed flash
-        const t = setTimeout(() => setFlashing(false), 450);
-        return () => clearTimeout(t);
-    }, [landed]);
+    const { hoveredBucketId } = useDragDrop();
     const { activeAccountId, activeAccount } = useMail();
     const connection = useConnection(activeAccountId) ?? activeAccount?.state;
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -57,19 +47,11 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                         cursor: 'pointer',
                         padding: '8px 12px',
                         borderRadius: 'var(--radius-md)',
-                        // As a drop target: green and growing in light; in dark, the dock rows' fill and amber ring
-                        ...(dark ? {
-                            backgroundColor: flashing ? 'color-mix(in srgb, var(--color-action) 16%, transparent)' : isHovered ? 'var(--color-bg-hover)' : 'transparent',
-                            color: 'var(--color-text-main)',
-                            boxShadow: isHovered || flashing ? 'inset 0 0 0 1px var(--color-action)' : 'none',
-                            transition: 'background-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
-                        } : {
-                            backgroundColor: isHovered ? 'var(--color-accent-primary)' : 'transparent',
-                            color: isHovered ? 'var(--color-on-accent)' : 'var(--color-text-main)',
-                            transform: isHovered ? 'scale(1.1)' : 'scale(1)',
-                            transition: 'background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
-                            boxShadow: isHovered ? 'var(--shadow-lift)' : 'none',
-                        }),
+                        // As a drop target: the dock rows' fill and amber ring
+                        backgroundColor: isHovered ? 'var(--color-bg-hover)' : 'transparent',
+                        color: 'var(--color-text-main)',
+                        boxShadow: isHovered ? 'inset 0 0 0 1px var(--color-action)' : 'none',
+                        transition: 'background-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
                         width: 'fit-content'
                     }}
                 >

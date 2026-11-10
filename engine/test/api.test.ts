@@ -17,6 +17,8 @@ const RICH = [
     'Message-ID: <rich@test>',
     'List-Unsubscribe: <https://example.com/unsub?u=1>',
     'List-Unsubscribe-Post: List-Unsubscribe=One-Click',
+    'List-Id: Cafe news <news.cafe.example>',
+    'Precedence: bulk',
     'MIME-Version: 1.0',
     'Content-Type: multipart/mixed; boundary="mixed"',
     '',
@@ -163,6 +165,8 @@ test('body: charset decoded, inline image inlined, attachments listed, cached', 
         assert.match(res.body.html, /<img src="data:image\/png;base64,iVBORw0KGgo=">/);
         assert.deepEqual(res.body.attachments.map((a: any) => [a.filename, a.contentType]), [['evil.html', 'text/html']]);
         assert.equal(res.body.listUnsubscribePost, 'List-Unsubscribe=One-Click');
+        assert.equal(res.body.listId, 'Cafe news <news.cafe.example>');
+        assert.equal(res.body.precedence, 'bulk');
         assert.equal((t.store.db.prepare('SELECT COUNT(*) n FROM body').get() as { n: number }).n, 1, 'cached');
         const again = await t.api(`/accounts/acct-1/messages/${encodeURIComponent('rich@test')}/body`);
         assert.deepEqual(again.body, res.body);

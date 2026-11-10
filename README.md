@@ -13,7 +13,7 @@ It works with any IMAP account and keeps your organisation on the mail server: b
 - **Writing:** one composer for new messages, replies and forwards, docked under the conversation or in a corner window. Drafts save to the server as you type. Undo send, attachments, a signature per account, and sending from any of your accounts.
 - **Several accounts,** each kept separate, switched from the rail on the left.
 - **Search** across senders, subjects and previews.
-- **Light and Dark.**
+- **A dark look,** with designed mail on a dimmed paper sheet and everything else in the app's own type.
 - **Sign-in:** its own login for one person, or the Bassapps sign-in shared with other apps (a separate service).
 - **Settings export and import,** without passwords.
 

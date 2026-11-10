@@ -161,18 +161,16 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
             if (typeof ref === 'function') ref(el);
             else if (ref) ref.current = el;
         };
-        const look = useDragLook(email.subject, cardRef);
+        const look = useDragLook(cardRef);
         const enters = useEntrance(arrivals, email.id);
 
-        const handleDragStart = (_event: unknown, info: PanInfo) => {
+        const handleDragStart = () => {
             isDraggingRef.current = true;
             setIsDragging(true);
-            look.start(info.point);
         };
 
         const handleDrag = (_event: PointerEvent, info: PanInfo) => {
             const dropPoint = { x: info.point.x, y: info.point.y };
-            look.move(dropPoint);
             let foundTarget: string | null = null;
 
             // Check inbox
@@ -296,7 +294,7 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
                 onClick={handleClick}
                 initial={enters ? { opacity: 0, scale: 0.95 } : false}
                 onUpdate={noNativeAnimation}
-                animate={{ opacity: isDropped || look.hidden ? 0 : 1, scale: isDropped ? 0.95 : 1, y: 0 }}
+                animate={{ opacity: isDropped ? 0 : 1, scale: isDropped ? 0.95 : 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.97, transition: tween(DURATION.mid) }}
                 transition={tween(isDropped ? DURATION.fast : DURATION.mid)}
                 style={{

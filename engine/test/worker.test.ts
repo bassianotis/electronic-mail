@@ -29,13 +29,15 @@ async function until(what: string, check: () => boolean | Promise<boolean>, time
     throw new Error(`timed out waiting for: ${what}`);
 }
 
-async function setup(options: WorkerOptions = {}, password = 'pass') {
+async function setup(options: WorkerOptions = {}, firstPassword = 'pass') {
+    let password = firstPassword;
     const user = freshUser();
     const phone: ImapFlow = await connect(user);
     for (const f of FOLDERS) await phone.mailboxCreate(f);
     const store = new Store(':memory:');
     const account = { id: 'acct-1', email: user, host: HARNESS.host, port: HARNESS.port, secure: false, user, pass: password };
     let connections = 0;
+    const attempts: number[] = [];
     const statuses: AccountStatus[] = [];
     const worker = new AccountWorker(account, store, {
         pollIntervalMs: 60_000,
@@ -45,6 +47,7 @@ async function setup(options: WorkerOptions = {}, password = 'pass') {
         ...options,
         createClient: role => {
             connections++;
+            attempts.push(Date.now());
             return new ImapFlow({
                 host: HARNESS.host, port: HARNESS.port, secure: false,
                 auth: { user, pass: password }, logger: false, qresync: role === 'work',
@@ -57,6 +60,10 @@ async function setup(options: WorkerOptions = {}, password = 'pass') {
     return {
         user, phone, store, worker, statuses, inbox,
         connections: () => connections,
+        /** When each login began. */
+        attempts,
+        /** What the app logs in with from now on (as if the host stopped or started accepting it). */
+        setPassword: (p: string) => { password = p; },
         async close() {
             await worker.stop();
             await phone.logout().catch(() => {});
@@ -147,7 +154,7 @@ test('connection-dropped-during-idle: reconnects by itself and catches up', asyn
     }
 });
 
-test('a rejected password stops retrying instead of hammering the server', async () => {
+test('a rejected password waits a long time before trying again, instead of hammering the server', async () => {
     const t = await setup({}, 'wrong-password');
     try {
         t.worker.start();
@@ -156,6 +163,38 @@ test('a rejected password stops retrying instead of hammering the server', async
         await new Promise(r => setTimeout(r, 800)); // several backoff periods
         assert.equal(t.connections(), attempts, 'no further login attempts');
         assert.match(t.worker.status().error ?? '', /password/);
+    } finally {
+        await t.close();
+    }
+});
+
+test('after a rejected password, one login per wait until the host accepts it again, then back online with IDLE', async () => {
+    const WAIT = 1000;
+    const refusals: number[] = [];
+    const t = await setup({
+        authRetryMinMs: WAIT, authRetryMaxMs: WAIT,
+        log: m => { if (/password refused/.test(m)) refusals.push(Date.now()); },
+    }, 'wrong-password');
+    try {
+        const shown = new Set<string>();
+        t.worker.on('status', s => shown.add(s.state));
+        t.worker.start();
+        // Dovecot slows each login after a refusal (by 2 to 15 s), so this waits for two retries, however long they take.
+        await until('two retries', () => t.attempts.length >= 4, 40_000);
+        assert.deepEqual([...shown], ['connecting', 'auth-failed'], 'the status stays "auth-failed" while it retries');
+        for (const at of t.attempts.slice(2)) { // the first two are the two connections starting
+            const refused = refusals.filter(r => r <= at).at(-1);
+            assert.ok(refused !== undefined && at - refused >= WAIT * 0.9, `a retry waits after the last refusal (${refused === undefined ? 'none' : at - refused} ms)`);
+            assert.equal(t.attempts.filter(a => a > refused! && a <= at).length, 1, 'one login per wait');
+        }
+
+        t.setPassword('pass'); // the host accepts it again (owner, 2026-11-10: it had refused a good password overnight)
+        await deliver(t.phone, 'INBOX');
+        await until('back online and caught up', () => t.worker.status().state === 'online' && t.inbox() === 1, 40_000);
+        assert.equal(t.worker.status().error, null);
+        await new Promise(r => setTimeout(r, WATCH_AUTO_IDLE_MS + 300));
+        await deliver(t.phone, 'INBOX'); // poll is 60 s: only a restarted watch connection sees this in time
+        await until('IDLE after the retry', () => t.inbox() === 2, 3000);
     } finally {
         await t.close();
     }

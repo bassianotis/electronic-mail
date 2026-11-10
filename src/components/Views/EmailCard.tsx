@@ -36,20 +36,18 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
             if (typeof ref === 'function') ref(el);
             else if (ref) ref.current = el;
         };
-        const look = useDragLook(email.subject, cardRef);
+        const look = useDragLook(cardRef);
         const [showSenderEmail, setShowSenderEmail] = React.useState(false);
         const [isDropped, setIsDropped] = React.useState(false);
         const enters = useEntrance(arrivals, email.id);
 
-        const handleDragStart = (_event: unknown, info: PanInfo) => {
+        const handleDragStart = () => {
             isDraggingRef.current = true;
             setIsDragging(true);
-            look.start(info.point);
         };
 
         const handleDrag = (_event: unknown, info: PanInfo) => {
             const dropPoint = { x: info.point.x, y: info.point.y };
-            look.move(dropPoint);
             let foundBucketId: string | null = null;
 
             // Check for archive target
@@ -203,7 +201,7 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                 layout
                 initial={enters ? { opacity: 0, scale: 0.95 } : false}
                 onUpdate={noNativeAnimation}
-                animate={{ opacity: isDropped || look.hidden ? 0 : 1, scale: isDropped ? 0.95 : 1 }}
+                animate={{ opacity: isDropped ? 0 : 1, scale: isDropped ? 0.95 : 1 }}
                 exit={{ opacity: 0, scale: 0.97, transition: tween(DURATION.mid) }}
                 transition={tween(isDropped ? DURATION.fast : DURATION.mid)}
                 whileDrag={look.whileDrag({

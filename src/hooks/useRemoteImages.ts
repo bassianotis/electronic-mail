@@ -20,7 +20,7 @@ export function useRemoteImages(key: string) {
         setCurrent({ key, state: 'loading' });
     }, [key]);
 
-    /** Every image has loaded or failed: the strip goes (failed ones keep their placeholder). */
+    /** Every image has loaded or failed: the strip reads "Images loaded" (failed ones keep their placeholder). */
     const settled = useCallback(() => {
         const wait = Math.max(0, MIN_LOADING_MS - (Date.now() - startedAt.current));
         setTimeout(() => {

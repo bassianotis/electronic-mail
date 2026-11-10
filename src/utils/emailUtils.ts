@@ -60,122 +60,115 @@ export function extractFirstParagraph(html: string, maxLength: number = 150): st
     return '';
 }
 
+/** Elements read as part of a line, not as blocks of their own. */
+const INLINE = new Set(['a', 'abbr', 'b', 'big', 'cite', 'code', 'del', 'em', 'font', 'i', 'ins', 'kbd', 'label', 'mark', 'q', 's', 'small', 'span', 'strike', 'strong', 'sub', 'sup', 'time', 'tt', 'u', 'var', 'wbr']);
+const BLOCKS = 'address, article, aside, blockquote, center, dd, div, dl, dt, figure, footer, h1, h2, h3, h4, h5, h6, header, hr, li, main, ol, p, pre, section, table, td, th, tr, ul';
+/** Clutter, removed before reading: scripts, forms, logos and tracking pixels, hidden text. */
+const CLUTTER = [
+    'script', 'style', 'button', 'input', 'form', 'svg', 'nav', '[role="navigation"]',
+    '.unsubscribe', '[hidden]', '[style*="display: none"]', '[style*="display:none"]',
+    '[style*="font-size: 1px"]', '[style*="font-size:1px"]', 'a[href*="unsubscribe"]',
+];
+/** Lines that are only a newsletter's furniture. */
+const FURNITURE = [
+    /^(unsubscribe|view (it |this (email |message )?)?(in|on) (your |a |the )?(web )?browser|click here|privacy policy|terms of service|manage (your )?(email )?preferences)\.?$/i,
+    /^©\s*\d{4}/,
+    /^all rights reserved\.?$/i,
+    /^https?:\/\/\S+$/,
+    /^www\.\S+$/,
+];
+
+const escapeText = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const textOf = (el: Element | DocumentFragment) => (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+const isFurniture = (text: string) => FURNITURE.some(pattern => pattern.test(text));
+
+/** A picture worth reading around: not a tracking pixel, an icon or a logo. */
+function keepImage(img: Element): boolean {
+    const width = parseInt(img.getAttribute('width') || '0');
+    const height = parseInt(img.getAttribute('height') || '0');
+    return !((width > 0 && width < 50) || (height > 0 && height < 50));
+}
+
+/** A small table of facts (a bill's lines): no tables inside, only words in its cells, and two columns or more. */
+function isDataTable(table: Element): boolean {
+    if (table.querySelector('table')) return false;
+    const cells = Array.from(table.querySelectorAll('td, th'));
+    if (!cells.length || cells.some(cell => cell.querySelector(BLOCKS))) return false;
+    return Array.from(table.querySelectorAll('tr')).some(row => row.querySelectorAll('td, th').length >= 2);
+}
+
+function dataTable(table: Element): string {
+    const rows = Array.from(table.querySelectorAll('tr'))
+        .map(row => Array.from(row.querySelectorAll('td, th')).map(cell => `<${cell.tagName.toLowerCase()}>${cell.innerHTML.trim()}</${cell.tagName.toLowerCase()}>`).join(''))
+        .filter(Boolean);
+    return rows.length ? `<table>${rows.map(r => `<tr>${r}</tr>`).join('')}</table>` : '';
+}
+
 /**
- * Extract clean content for reader mode (like Safari Reader or Pocket)
- * Removes clutter (logos, buttons, footers) and returns just paragraphs and headers
- * Preserves images, links, and inline formatting (bold, italic, etc)
+ * Reader's content (paper mail only; docs/design/reading-view-spec.md, Part 2): the words,
+ * headings, lists, quotes, pictures and small tables of facts, in order, without the email's
+ * layout. Text is collected from any block, a <div> included (Gmail and this app write a reply's
+ * text straight into one), so the message's own words are never dropped: only clutter goes
+ * (logos and tracking pixels, hidden text, "Unsubscribe", "View in browser", copyright lines).
+ * The caller passes the newest part; quoted history stays behind "Show quoted content".
  */
 export function extractReaderContent(html: string): string {
     if (!html) return '';
+    const root = inertDiv(html);
+    for (const selector of CLUTTER) {
+        try { root.querySelectorAll(selector).forEach(el => el.remove()); } catch { /* a selector this browser can't read */ }
+    }
+    const out: string[] = [];
+    let line: string[] = [];
 
-    const tempDiv = inertDiv(html);
-
-    // Remove clutter elements (but keep images and links!)
-    const removeSelectors = [
-        'script',
-        'style',
-        'button',        // Remove buttons
-        'input',
-        'form',
-        'svg',           // Remove logos/icons
-        'header',        // Remove email headers
-        'footer',        // Remove footers
-        'nav',
-        '[role="banner"]',
-        '[role="navigation"]',
-        '[role="contentinfo"]',
-        '.footer',
-        '.header',
-        '.logo',
-        '.unsubscribe',
-        '[style*="display: none"]',
-        '[style*="display:none"]',
-        '[style*="font-size: 1px"]',  // Tracking pixels
-        '[style*="font-size:1px"]',
-        'a[href*="unsubscribe"]',
-        'img[width="1"]',     // Only remove tracking pixels
-        'img[height="1"]'
-    ];
-
-    removeSelectors.forEach(selector => {
-        try {
-            tempDiv.querySelectorAll(selector).forEach(el => el.remove());
-        } catch (e) {
-            // Skip invalid selectors
-        }
-    });
-
-    // Extract elements in document order (text + images)
-    const contentElements: string[] = [];
-
-    // Helper function to recursively extract content while preserving order
-    const extractFromElement = (element: Element) => {
-        // Process all child nodes in order
-        Array.from(element.children).forEach(child => {
-            const tagName = child.tagName.toLowerCase();
-
-            // Handle images
-            if (tagName === 'img') {
-                const width = parseInt(child.getAttribute('width') || '0');
-                const height = parseInt(child.getAttribute('height') || '0');
-
-                // Skip small images (likely icons or logos)
-                if ((width > 0 && width < 50) || (height > 0 && height < 50)) {
-                    return;
-                }
-
-                // Keep the image
-                contentElements.push(child.outerHTML);
-                return;
-            }
-
-            // Handle text elements
-            if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'].includes(tagName)) {
-                const text = child.textContent?.trim() || '';
-
-                // Skip if too short or looks like spam
-                if (text.length < 10) {
-                    // But still recurse in case there are images inside
-                    extractFromElement(child);
-                    return;
-                }
-
-                const skipPatterns = [
-                    /^(unsubscribe|view.*browser|click here|privacy policy|terms of service)$/i,
-                    /^©\s*\d{4}/,
-                    /^all rights reserved$/i,
-                    /^https?:\/\/[^\s]+$/,
-                    /^www\.[^\s]+$/
-                ];
-
-                if (skipPatterns.some(pattern => pattern.test(text))) {
-                    return;
-                }
-
-                // Keep the element with its formatting
-                const innerHTML = child.innerHTML.trim();
-                contentElements.push(`<${tagName}>${innerHTML}</${tagName}>`);
-                return;
-            }
-
-            // Handle list items
-            if (tagName === 'li') {
-                const text = child.textContent?.trim() || '';
-                if (text.length >= 10) {
-                    contentElements.push(`<li>${child.innerHTML.trim()}</li>`);
-                }
-                return;
-            }
-
-            // For other containers (div, section, etc.), recurse into them
-            if (child.children.length > 0) {
-                extractFromElement(child);
-            }
-        });
+    // The line being collected becomes a paragraph (without line breaks at either end)
+    const flush = () => {
+        const content = line.join('').replace(/^(\s|<br>)+|(\s|<br>)+$/gi, '');
+        line = [];
+        if (!content) return;
+        const holder = inertDiv(content);
+        const text = textOf(holder);
+        if (!text && !holder.querySelector('img')) return;
+        if (text && isFurniture(text)) return;
+        out.push(`<p>${content}</p>`);
     };
 
-    // Start extraction from the root
-    extractFromElement(tempDiv);
-
-    return contentElements.join('');
+    const walk = (node: Node) => {
+        for (const child of Array.from(node.childNodes)) {
+            if (child.nodeType === Node.TEXT_NODE) { line.push(escapeText(child.textContent ?? '')); continue; }
+            if (child.nodeType !== Node.ELEMENT_NODE) continue;
+            const el = child as Element;
+            const tag = el.tagName.toLowerCase();
+            if (tag === 'br') { line.push('<br>'); continue; }
+            if (tag === 'img') {
+                if (keepImage(el)) { flush(); out.push(el.outerHTML); }
+                continue;
+            }
+            if (INLINE.has(tag) && !el.querySelector(BLOCKS)) {
+                if (!isFurniture(textOf(el))) line.push(el.outerHTML);
+                continue;
+            }
+            flush();
+            if (/^h[1-6]$/.test(tag)) {
+                const text = textOf(el);
+                if (text && !isFurniture(text)) out.push(`<${tag}>${el.innerHTML.trim()}</${tag}>`);
+            } else if (tag === 'ul' || tag === 'ol') {
+                const items = Array.from(el.children).filter(li => li.tagName === 'LI' && textOf(li) && !isFurniture(textOf(li)));
+                if (items.length) out.push(`<${tag}>${items.map(li => `<li>${li.innerHTML.trim()}</li>`).join('')}</${tag}>`);
+            } else if (tag === 'blockquote') {
+                const inner = extractReaderContent(el.innerHTML);
+                if (inner) out.push(`<blockquote>${inner}</blockquote>`);
+            } else if (tag === 'pre') {
+                if (textOf(el)) out.push(`<pre>${el.innerHTML}</pre>`);
+            } else if (tag === 'table' && isDataTable(el)) {
+                out.push(dataTable(el));
+            } else if (tag !== 'hr') {
+                walk(el); // a block or container (div, p, td, section...): its text, in order
+            }
+            flush();
+        }
+    };
+    walk(root);
+    flush();
+    return out.join('');
 }

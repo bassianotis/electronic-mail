@@ -17,8 +17,8 @@ import { DraftBadge } from '../Views/DraftBadge';
 import { BodyFailure, BodySkeleton } from '../Loading/Skeletons';
 import { type Arrivals, useEntrance } from '../../hooks/useArrivals';
 import { DURATION, noNativeAnimation, tween } from '../../utils/motion';
-import { adoptThemeText, hasOwnLook } from '../../utils/mailLook';
-import { useTheme } from '../../utils/theme';
+import { showsOnPaper, stripToTheme } from '../../utils/mailLook';
+import { splitQuotedContent } from '../../utils/quotes';
 import { useDragLook } from '../../hooks/useDragLook';
 import { inDockStrip } from '../../utils/dropTargets';
 import { formatCount, formatSize } from '../../utils/format';
@@ -43,7 +43,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
     const [isHovered, setIsHovered] = React.useState(false);
     const itemRef = useRef<HTMLDivElement>(null);
     const { setHoveredBucketId, setIsDragging } = useDragDropActions();
-    const { buckets, markThreadSeen, activeAccount, activeAccountId, download } = useMail();
+    const { buckets, markThreadSeen, activeAccount, activeAccountId, download, accounts } = useMail();
     // Filing (drag to a bucket) needs the server: off while it can't be reached
     const offline = useServerUnreachable();
     const viewPreference = activeAccount?.inboxView || 'expand';
@@ -51,13 +51,17 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
     // The newest message's body, fetched when the card is opened
     const { body, error: bodyError, retry: retryBody } = useMessageBody(activeAccountId, email.msgKey, isExpanded);
     const bodyContent = body ? bodyHtml(body) : '';
-    // Dark theme: mail with its own look sits on paper; the rest takes the theme's text colour (utils/mailLook.ts)
-    const paper = useMemo(() => hasOwnLook(bodyContent), [bodyContent]);
-    const dark = useTheme() === 'dark';
+    // Designed mail from someone else sits on paper; the rest is shown in the theme, its own look
+    // stripped (utils/mailLook.ts: the same rule as the reading view, decided on the newest part)
+    const fromMe = !!email.senderAddress && accounts.some(a => a.email.toLowerCase() === email.senderAddress!.toLowerCase());
+    const paper = useMemo(() => !!body && showsOnPaper(splitQuotedContent(bodyContent).original, body, fromMe), [body, bodyContent, fromMe]);
     // Outside images: hidden (placeholders) until loaded for this message (utils/remoteImages.ts)
     const images = useRemoteImages(`${activeAccountId}:${email.msgKey}`);
-    const shown = useMemo(() => prepareBody(sanitizeHtml(bodyContent), paper ? 'paper' : 'theme', images.allowed), [bodyContent, paper, images.allowed]);
-    const look = useDragLook(email.subject, itemRef);
+    const shown = useMemo(
+        () => (paper ? prepareBody(sanitizeHtml(bodyContent), 'paper', images.allowed) : prepareBody(stripToTheme(sanitizeHtml(bodyContent)).html, 'theme', images.allowed)),
+        [bodyContent, paper, images.allowed]
+    );
+    const look = useDragLook(itemRef);
     const attachments = body?.attachments ?? [];
     const enters = useEntrance(arrivals, email.id);
 
@@ -109,16 +113,14 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
         onDone(email.id);
     };
 
-    const handleDragStart = (_event: any, info: any) => {
+    const handleDragStart = () => {
         isDraggingRef.current = true;
         setIsDragging(true);
-        look.start(info.point);
     };
 
     const handleDrag = (_event: any, info: any) => {
         const dropPoint = { x: info.point.x, y: info.point.y };
         let foundBucketId: string | null = null;
-        look.move(dropPoint);
 
         // Check archive target
         const archiveElement = document.getElementById('archive-target');
@@ -258,7 +260,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                 initial={enters ? { opacity: 0, y: 20 } : false}
                 onUpdate={noNativeAnimation}
                 animate={{
-                    opacity: look.hidden ? 0 : 1,
+                    opacity: 1,
                     y: 0,
                     boxShadow: isExpanded ? 'var(--shadow-lg)' : (isHovered ? 'var(--shadow-md)' : 'var(--shadow-sm)')
                 }}
@@ -300,8 +302,8 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                     {/* Dark (the Instrument trial): the meta line spans the card with its date on the right. On hover and
                         while the card is open, its Archive takes the date's spot (as mail apps put hover actions where the
                         date was), centred on that line, so it never moves when the card opens. */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-sm)', ...(dark ? { position: 'relative', gap: 'var(--space-md)' } : {}) }}>
-                        <div style={dark ? { flex: 1, minWidth: 0 } : undefined}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-sm)', position: 'relative', gap: 'var(--space-md)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                             <h3 style={{
                                 fontSize: 'var(--size-card-title)',
                                 fontWeight: 'var(--weight-semibold)',
@@ -383,8 +385,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                         View thread
                                     </button>
                                 )}
-                                {!isExpanded && !dark && <span>•</span>}
-                                {dark ? (
+                                {/* Archive sits in the date's spot, shown on hover or when open */}
                                     <span style={{ marginLeft: 'auto', position: 'relative', display: 'flex', alignItems: 'center' }}>
                                         <span style={{
                                             fontSize: 'var(--size-date)',
@@ -425,39 +426,10 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                             Archive
                                         </motion.button>
                                     </span>
-                                ) : (
-                                    <span style={{ fontSize: 'var(--size-date)', color: 'var(--color-text-faint)', fontVariantNumeric: 'var(--date-numerals)' }}>{formatListDate(email.date)}</span>
-                                )}
                             </div>
 
                         </div>
 
-                        {/* Archive Action (Visible on Hover or Expanded); in dark it sits in the date's spot instead */}
-                        {!dark && <motion.button
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: isHovered || isExpanded ? 1 : 0 }}
-                            onClick={handleArchive}
-                            style={{
-                                padding: '8px 16px',
-                                borderRadius: 'var(--radius-pill)',
-                                backgroundColor: 'var(--archive-button-bg)',
-                                color: 'var(--archive-button-text)',
-                                fontSize: 'var(--font-size-sm)',
-                                fontWeight: 'var(--weight-semibold)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                transition: 'background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)',
-                                boxShadow: 'var(--shadow-sm)',
-                                border: 'var(--archive-button-border)',
-                                cursor: 'pointer'
-                            }}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.97 }}
-                        >
-                            <Check size={16} style={{ color: 'var(--archive-button-icon)' }} />
-                            Archive
-                        </motion.button>}
                     </div>
 
                     {/* Body Content */}
@@ -501,10 +473,10 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                     ) : (
                                         <>
                                             {shown.remote && <ImagesStrip state={images.state} onLoad={images.load} variant="inline" />}
-                                            <div style={{ marginTop: shown.remote && images.state !== 'loaded' ? 'var(--space-md)' : 0 }}>
+                                            <div style={{ marginTop: shown.remote ? 'var(--space-md)' : 0 }}>
                                                 <MailFrame
-                                                    html={(dark && !paper ? adoptThemeText : String)(shown.html)}
-                                                    paper={paper}
+                                                    html={shown.html}
+                                                    look={paper ? 'paper' : 'theme'}
                                                     imagesAllowed={images.allowed}
                                                     fontSize={16}
                                                     minHeight={300}

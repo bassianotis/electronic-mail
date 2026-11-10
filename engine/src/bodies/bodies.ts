@@ -39,6 +39,9 @@ export interface MessageBody {
     attachments: AttachmentInfo[];
     listUnsubscribe: string | null;
     listUnsubscribePost: string | null;
+    /** List-Id and Precedence: with List-Unsubscribe, they mark mail sent to a list (the screens show it on paper). */
+    listId: string | null;
+    precedence: string | null;
 }
 
 interface Leaf {
@@ -65,7 +68,7 @@ export async function getBody(client: ImapFlow, store: Store, account: string, m
     const cached = store.db.prepare('SELECT data FROM body WHERE account = ? AND msg_key = ?').get(account, msgKey) as { data: string } | undefined;
     if (cached) {
         const body = JSON.parse(cached.data) as MessageBody;
-        if (body.headers) { // cached before headers were stored: fetch again
+        if (body.headers && body.listId !== undefined) { // cached before headers, or List-Id and Precedence, were stored: fetch again
             store.db.prepare('UPDATE body SET accessed_at = ? WHERE account = ? AND msg_key = ?').run(new Date().toISOString(), account, msgKey);
             return body;
         }
@@ -75,7 +78,7 @@ export async function getBody(client: ImapFlow, store: Store, account: string, m
     const lock = await lockFresh(client, folder);
     let body: MessageBody;
     try {
-        const msg = await client.fetchOne(String(uid), { bodyStructure: true, envelope: true, headers: ['list-unsubscribe', 'list-unsubscribe-post'] }, { uid: true });
+        const msg = await client.fetchOne(String(uid), { bodyStructure: true, envelope: true, headers: ['list-unsubscribe', 'list-unsubscribe-post', 'list-id', 'precedence'] }, { uid: true });
         if (!msg || !msg.bodyStructure) throw new NotFound(`message ${msgKey} is no longer on the server`);
         const leaves = flatten(msg.bodyStructure);
         const htmlPart = leaves.find(l => l.type === 'text/html' && l.disposition !== 'attachment');
@@ -118,6 +121,8 @@ export async function getBody(client: ImapFlow, store: Store, account: string, m
                 .map(l => ({ part: l.part, filename: l.filename, contentType: l.type, size: l.size })),
             listUnsubscribe: headers.get('list-unsubscribe') ?? null,
             listUnsubscribePost: headers.get('list-unsubscribe-post') ?? null,
+            listId: headers.get('list-id') ?? null,
+            precedence: headers.get('precedence') ?? null,
         };
     } finally {
         lock.release();

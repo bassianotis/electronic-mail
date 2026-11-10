@@ -2,12 +2,15 @@
  * One message inside the conversation view (Explore 2): in the reading view the conversation's
  * subject (with older / newer at its right), then a header (sender, "to Dana, Theo, me" and an
  * arrow that opens every address, the date, copy link), the body, its attachments, and the
- * Reader / text size controls. In the band above the composer it's the header (older / newer at
- * its right end) and the body only. Without notes and due dates (D19, D20).
+ * Reader or Original and text size controls. In the band above the composer it's the header
+ * (older / newer at its right end) and the body only. Without notes and due dates (D19, D20).
+ *
+ * The body is on paper (designed mail, with Reader) or in the theme (the rest, stripped of its
+ * look, with Original when there was one to strip): docs/design/reading-view-spec.md.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Check, ChevronDown, ChevronUp, Download, Link2 } from 'lucide-react';
+import { BookOpen, Check, ChevronDown, ChevronUp, Download, Link2, Palette } from 'lucide-react';
 import type { EmailAddress as Address } from '../../store/mailStore';
 import type { Email } from '../../store/mailStore';
 import { useMessageBody } from '../../api/bodies';
@@ -17,11 +20,10 @@ import { extractReaderContent } from '../../utils/emailUtils';
 import { sanitizeHtml, sanitizeReaderHtml } from '../../utils/sanitize';
 import { MailFrame } from './MailFrame';
 import { ImagesStrip } from './ImagesStrip';
-import { prepareBody } from '../../utils/remoteImages';
+import { cssIsOutside, prepareBody } from '../../utils/remoteImages';
 import { useRemoteImages } from '../../hooks/useRemoteImages';
-import { inertDiv } from '../../utils/inertHtml';
-import { adoptThemeText, hasOwnLook } from '../../utils/mailLook';
-import { useTheme } from '../../utils/theme';
+import { fontFaces, showsOnPaper, stripToTheme } from '../../utils/mailLook';
+import { splitQuotedContent } from '../../utils/quotes';
 import { formatDateTime, formatFullDateTime } from '../../utils/formatDate';
 import { BodyFailure, BodySkeleton } from '../Loading/Skeletons';
 import { formatCount, formatSize } from '../../utils/format';
@@ -48,6 +50,9 @@ interface MessageCardProps {
     onCopyLink?: () => void;
     /** Older / newer, in the card's top right (a conversation of more than one message). */
     nav?: ThreadNavProps;
+    /** Original is on for this conversation (ConversationStack): each message that has one shows it. */
+    showOriginal: boolean;
+    onShowOriginal: (on: boolean) => void;
 }
 
 interface ThreadNavProps {
@@ -99,44 +104,6 @@ const ThreadNav: React.FC<ThreadNavProps> = ({ older, newer, onOlder, onNewer })
     </div>
 );
 
-/** Splits a reply into what was written now and the quoted history (shown on request). */
-const splitQuotedContent = (html: string): { original: string; quoted: string | null } => {
-    if (!html) return { original: '', quoted: null };
-    const div = inertDiv(html); // parsed where nothing loads
-    const quoteSelectors = [
-        '.gmail_quote',           // Gmail (and this app)
-        '.gmail_extra',
-        'blockquote[type="cite"]', // Apple Mail
-        '.yahoo_quoted',
-        '.moz-cite-prefix',       // Thunderbird
-        '.OutlookMessageHeader',
-        '#divRplyFwdMsg',         // Outlook web
-        '.ms-outlook-hide-in-thread',
-    ];
-    for (const selector of quoteSelectors) {
-        const quoteEl = div.querySelector(selector);
-        if (quoteEl) {
-            const quoted = quoteEl.outerHTML;
-            quoteEl.remove();
-            const original = div.innerHTML.trim();
-            if (original) return { original, quoted };
-        }
-    }
-    const onWrote = html.match(/(<div[^>]*>|<p[^>]*>|<br\s*\/?>)*On\s+.{10,100}\s+wrote:\s*(<br\s*\/?>|<\/div>|<\/p>)?/i);
-    if (onWrote?.index !== undefined && onWrote.index > 50) {
-        const original = html.substring(0, onWrote.index).trim();
-        const quoted = html.substring(onWrote.index).trim();
-        if (original && quoted) return { original, quoted };
-    }
-    const forwarded = html.match(/(<div[^>]*>|<p[^>]*>)?-{2,}[\s]*(Original Message|Forwarded Message)[\s]*-{2,}/i);
-    if (forwarded?.index !== undefined && forwarded.index > 50) {
-        const original = html.substring(0, forwarded.index).trim();
-        const quoted = html.substring(forwarded.index).trim();
-        if (original && quoted) return { original, quoted };
-    }
-    return { original: html, quoted: null };
-};
-
 /** The text sizes a message can be read at (1.0 is the default). */
 const ZOOMS = [0.9, 1.0, 1.1, 1.2];
 
@@ -161,11 +128,13 @@ const recipientsLine = (to: Address[], cc: Address[], mine: (address: string) =>
 };
 
 export const MessageCard: React.FC<MessageCardProps> = React.memo(({
-    accountId, email: base, load, onLoaded, onDownload, subject, compact, myAddresses, dateLabel, linkCopied, onCopyLink, nav,
+    accountId, email: base, load, onLoaded, onDownload, subject, compact, myAddresses, dateLabel, linkCopied, onCopyLink, nav, showOriginal, onShowOriginal,
 }) => {
     const { body, error, retry } = useMessageBody(accountId, base.msgKey, load);
     const email = useMemo(() => (body ? withBody(base, body) : base), [base, body]);
-    const [readerMode, setReaderMode] = useState(false);
+    // Reader (paper mail) is per message, never remembered; Original (theme mail with a look of its
+    // own) stays on through the conversation until it's turned off or the conversation closes.
+    const [readerOn, setReaderOn] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(1.0);
     const [showFullBody, setShowFullBody] = useState(false);
     // Every address, opened by the arrow after the recipients (closes when another card comes to the front).
@@ -180,26 +149,33 @@ export const MessageCard: React.FC<MessageCardProps> = React.memo(({
     const bodyState = error ? 'failed' : body || email.body ? 'ready' : load ? 'loading' : 'preview';
     const bodyContent = email.body || (email.preview ? `<p style="color:#999">${email.preview.replace(/</g, '&lt;')}…</p>` : '');
     const { original, quoted } = useMemo(() => splitQuotedContent(bodyContent), [bodyContent]);
-    const paper = useMemo(() => hasOwnLook(bodyContent), [bodyContent]);
-    // In the dark theme, mail without its own look takes the theme's text colour (utils/mailLook.ts)
-    const themed = useTheme() === 'dark' && !paper;
-    // Outside images: hidden (placeholders) until loaded for this message (utils/remoteImages.ts)
-    const images = useRemoteImages(`${accountId}:${base.msgKey}`);
-    const shown = useMemo(
-        () => prepareBody(sanitizeHtml(showFullBody ? bodyContent : original), paper ? 'paper' : 'theme', images.allowed),
-        [bodyContent, original, showFullBody, paper, images.allowed]
-    );
-    const reader = useMemo(
-        () => (readerMode ? prepareBody(sanitizeReaderHtml(extractReaderContent(bodyContent)), 'reader', images.allowed) : null),
-        [readerMode, bodyContent, images.allowed]
-    );
-    const loadImages = () => {
-        images.load();
-        if (readerMode) images.settled(); // Reader's images are in the page: nothing to wait for
-    };
-    const attachments = email.attachments ?? [];
     const mine = (address: string | undefined) => !!address && myAddresses.includes(address.toLowerCase());
     const fromMe = email.mailbox === 'Sent' || mine(email.senderAddress);
+    // Paper for designed mail from someone else, decided on the newest part (utils/mailLook.ts)
+    const paper = useMemo(() => !!body && showsOnPaper(original, body, fromMe), [body, original, fromMe]);
+    // The rest is shown in the theme, its own look stripped. "Original" is offered when the message,
+    // quote included, had a look of its own (its web fonts count too), and shows all of it as sent.
+    const fonts = useMemo(() => (paper || !body?.html ? '' : fontFaces(body.html)), [paper, body]);
+    const hadLook = useMemo(() => !paper && !!body?.html && stripToTheme(sanitizeHtml(bodyContent)).hadLook, [paper, body, bodyContent]);
+    const canOriginal = !paper && !!body?.html && (hadLook || !!fonts);
+    const readerMode = readerOn && paper;
+    const originalMode = showOriginal && canOriginal;
+    const raw = showFullBody || originalMode ? bodyContent : original;
+    const themed = useMemo(() => (paper ? null : stripToTheme(sanitizeHtml(raw))), [paper, raw]);
+    // Outside images: hidden (placeholders) until loaded for this message (utils/remoteImages.ts)
+    const images = useRemoteImages(`${accountId}:${base.msgKey}`);
+    const onSheet = paper || originalMode;
+    const shown = useMemo(
+        () => (onSheet || !themed ? prepareBody(sanitizeHtml(raw), 'paper', images.allowed) : prepareBody(themed.html, 'theme', images.allowed)),
+        [onSheet, themed, raw, images.allowed]
+    );
+    const reader = useMemo(
+        () => (readerMode ? prepareBody(sanitizeReaderHtml(extractReaderContent(raw)), 'reader', images.allowed) : null),
+        [readerMode, raw, images.allowed]
+    );
+    // Where the paper sheet starts, so "Show quoted content" lines up under it
+    const [sheetLeft, setSheetLeft] = useState(0);
+    const attachments = email.attachments ?? [];
     const toLine = recipientsLine(email.to ?? [], email.cc ?? [], mine);
     // Reply-To shows only when replies go somewhere other than the sender.
     const replyTo = (email.replyTo ?? []).filter(a => a.address.toLowerCase() !== (email.senderAddress ?? '').toLowerCase());
@@ -346,7 +322,7 @@ export const MessageCard: React.FC<MessageCardProps> = React.memo(({
                 </div>
             )}
 
-            {bodyState === 'ready' && (reader ?? shown).remote && <ImagesStrip state={images.state} onLoad={loadImages} />}
+            {bodyState === 'ready' && ((reader ?? shown).remote || (originalMode && cssIsOutside(fonts))) && <ImagesStrip state={images.state} onLoad={images.load} />}
 
             {/* Content (Scrollable) */}
             <div
@@ -356,7 +332,8 @@ export const MessageCard: React.FC<MessageCardProps> = React.memo(({
                     minHeight: 0,
                     overflowY: 'auto',
                     paddingTop: '16px',
-                    paddingBottom: compact ? '48px' : '80px',
+                    // Room for Reader / Original and the text sizes, so they never cover the last row
+                    paddingBottom: compact ? '48px' : '120px',
                     paddingLeft: readerMode ? '40px' : 'var(--space-lg)',
                     paddingRight: readerMode ? '40px' : 'var(--space-lg)'
                 }}>
@@ -365,27 +342,20 @@ export const MessageCard: React.FC<MessageCardProps> = React.memo(({
                         <BodySkeleton minHeight={200} />
                     ) : bodyState === 'failed' ? (
                         <BodyFailure minHeight={200} onRetry={retry} />
-                    ) : readerMode ? (
-                        <div
-                            className="reader-content"
-                            style={{
-                                fontSize: 'var(--font-size-lg)',
-                                lineHeight: '1.7',
-                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                            }}
-                            dangerouslySetInnerHTML={{ __html: reader?.html ?? '' }}
-                        />
                     ) : (
                         <>
+                            {/* In a frame like any email: its content policy keeps outside content out, Reader included */}
                             <MailFrame
-                                html={(themed ? adoptThemeText : String)(shown.html)}
-                                paper={paper}
+                                html={readerMode ? reader?.html ?? '' : shown.html}
+                                look={readerMode ? 'reader' : onSheet ? 'paper' : 'theme'}
                                 imagesAllowed={images.allowed}
                                 fontSize={16 * zoomLevel}
                                 minHeight={200}
                                 onImagesSettled={images.settled}
+                                onSheetLeft={setSheetLeft}
+                                fonts={originalMode ? fonts : ''}
                             />
-                            {quoted && (
+                            {quoted && !originalMode && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -396,7 +366,8 @@ export const MessageCard: React.FC<MessageCardProps> = React.memo(({
                                         alignItems: 'center',
                                         gap: '8px',
                                         padding: '8px 16px',
-                                        margin: '16px 0',
+                                        // On paper, under the sheet's left edge
+                                        margin: `16px 0 16px ${onSheet && !readerMode ? sheetLeft : 0}px`,
                                         backgroundColor: 'var(--color-bg-subtle)',
                                         border: '1px solid var(--color-border)',
                                         borderRadius: 'var(--radius-full)',
@@ -470,30 +441,36 @@ export const MessageCard: React.FC<MessageCardProps> = React.memo(({
                     zIndex: 100
                 }}
             >
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setReaderMode(!readerMode);
-                    }}
-                    style={{
-                        backgroundColor: readerMode ? 'var(--reader-text)' : 'var(--surface-raised)',
-                        color: readerMode ? 'var(--reader-bg)' : 'var(--color-text-main)',
-                        padding: '8px 16px',
-                        borderRadius: 'var(--radius-pill)',
-                        boxShadow: 'var(--shadow-lift)',
-                        border: readerMode ? 'none' : '1px solid var(--border-strong)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        fontWeight: 'var(--weight-semibold)',
-                        fontSize: 'var(--font-size-sm)',
-                        transition: 'background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)'
-                    }}
-                >
-                    <BookOpen size={16} />
-                    {readerMode ? 'Exit Reader' : 'Reader'}
-                </button>
+                {/* Reader on paper mail, Original on theme mail that had a look of its own: one place, one style */}
+                {(paper || canOriginal) && bodyState === 'ready' && (
+                    <button
+                        type="button"
+                        aria-pressed={paper ? readerMode : originalMode}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (paper) setReaderOn(!readerMode);
+                            else onShowOriginal(!originalMode);
+                        }}
+                        style={{
+                            backgroundColor: 'var(--surface-raised)',
+                            color: 'var(--color-text-main)',
+                            padding: '8px 16px',
+                            borderRadius: 'var(--radius-pill)',
+                            boxShadow: 'var(--shadow-lift)',
+                            border: '1px solid var(--border-strong)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontWeight: 'var(--weight-semibold)',
+                            fontSize: 'var(--font-size-sm)',
+                            transition: 'background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)'
+                        }}
+                    >
+                        {paper ? <BookOpen size={16} aria-hidden="true" /> : <Palette size={16} aria-hidden="true" />}
+                        {paper ? (readerMode ? 'Exit Reader' : 'Reader') : (originalMode ? 'Exit original' : 'Original')}
+                    </button>
+                )}
                 {!readerMode && (
                     <div style={{
                         backgroundColor: 'var(--surface-raised)',

@@ -4,8 +4,9 @@
 // A cheap LIST-STATUS check runs every minute and syncs only folders that moved; a daily
 // UID-list comparison repairs anything a sync might have missed; a daily sweep archives old
 // items from buckets that ask for it (src/app/autoArchive.ts). Dropped connections come
-// back with exponential backoff; a rejected password stops all retries (repeated failed logins
-// can get an address blocked by the host's brute-force protection).
+// back with exponential backoff. A rejected password is tried again only after a long wait (15 min,
+// doubling to 2 h), one login at a time: hosts sometimes refuse a good password for a while, and
+// repeated failed logins can get an address blocked by the host's brute-force protection.
 import { EventEmitter, once } from 'node:events';
 import { ImapFlow } from 'imapflow';
 import type { Store } from '../store/store.ts';
@@ -46,6 +47,9 @@ export interface WorkerOptions {
     /** Reconnect backoff bounds (ms). Default 1 s .. 5 min. */
     backoffMinMs?: number;
     backoffMaxMs?: number;
+    /** After a rejected password, the wait before one more login (ms). Default 15 min, doubling to 2 h. */
+    authRetryMinMs?: number;
+    authRetryMaxMs?: number;
     /** Wait after an IDLE notification before syncing, to batch bursts (ms). Default 250. */
     inboxDebounceMs?: number;
     /** Never run user tasks (the read-only preview); syncing only reads. */
@@ -91,6 +95,13 @@ export class AccountWorker extends EventEmitter {
     private version = 0;
     private stopped = true;
     private backoff: number;
+    private authRetry: number;
+    private authTimer: NodeJS.Timeout | null = null;
+    /** The one login allowed after a refused password is due (the status stays "auth-failed" meanwhile)... */
+    private loginRetry = false;
+    /** ...and under way: a late refusal from the other connection waits for its answer. */
+    private retryInFlight = false;
+    private watchRunning = false;
 
     private readonly jobs: { fn: (client: ImapFlow) => Promise<unknown>; resolve: (v: unknown) => void; reject: (e: unknown) => void }[] = [];
     private pendingTasks = false;
@@ -118,9 +129,12 @@ export class AccountWorker extends EventEmitter {
             sweepIntervalMs: options.sweepIntervalMs ?? 24 * 60 * 60_000,
             backoffMinMs: options.backoffMinMs ?? 1_000,
             backoffMaxMs: options.backoffMaxMs ?? 5 * 60_000,
+            authRetryMinMs: options.authRetryMinMs ?? 15 * 60_000,
+            authRetryMaxMs: options.authRetryMaxMs ?? 2 * 60 * 60_000,
             inboxDebounceMs: options.inboxDebounceMs ?? 250,
         };
         this.backoff = this.opts.backoffMinMs;
+        this.authRetry = this.opts.authRetryMinMs;
         this.readOnly = options.readOnly ?? false;
         this.rules = options.rules ?? (() => []);
         this.isOwnNotice = options.isOwnNotice ?? (() => false);
@@ -147,6 +161,8 @@ export class AccountWorker extends EventEmitter {
     start(): void {
         if (!this.stopped) return;
         this.stopped = false;
+        this.authRetry = this.opts.authRetryMinMs; // a restart (the account was edited) logs in at once
+        this.loginRetry = false;
         this.pendingCheck = true;
         this.pendingTasks = !this.readOnly && hasPendingTasks(this.store, this.account.id); // resume tasks left by a restart
         const last = this.readOnly ? null : lastSweep(this.store, this.account.id);
@@ -159,7 +175,7 @@ export class AccountWorker extends EventEmitter {
         }, this.opts.pollIntervalMs);
         this.timers.add(poll);
         void this.pump();
-        this.watching = this.keepWatching();
+        this.startWatching();
     }
 
     async stop(): Promise<void> {
@@ -167,7 +183,8 @@ export class AccountWorker extends EventEmitter {
         for (const j of this.jobs.splice(0)) j.reject(new Error(`${this.account.email} is shutting down`));
         for (const t of this.timers) clearInterval(t);
         this.timers.clear();
-        for (const t of [this.inboxTimer, this.backToInboxTimer, this.previewTimer]) if (t) clearTimeout(t);
+        for (const t of [this.inboxTimer, this.backToInboxTimer, this.previewTimer, this.authTimer]) if (t) clearTimeout(t);
+        this.authTimer = null;
         for (const wake of this.sleepers) wake();
         await Promise.allSettled([this.work?.logout(), this.watch?.logout()]);
         await Promise.allSettled([this.pumping, this.watching]);
@@ -355,17 +372,24 @@ export class AccountWorker extends EventEmitter {
         for (;;) {
             if (this.stopped) throw new Stopped();
             if (this.work?.usable) return this.work;
-            if (this.state === 'auth-failed') throw new Stopped();
+            if (this.state === 'auth-failed' && !this.loginRetry) throw new Stopped();
+            const retrying = this.loginRetry;
+            this.loginRetry = false;
+            this.retryInFlight = retrying;
             try {
-                this.setState('connecting', this.error);
+                if (!retrying) this.setState('connecting', this.error);
                 this.work = await this.connect('work');
+                this.retryInFlight = false;
                 this.backoff = this.opts.backoffMinMs;
+                this.authRetry = this.opts.authRetryMinMs;
                 this.setState('online', null);
+                this.startWatching(); // its loop ended if a login was refused
                 return this.work;
             } catch (err) {
+                this.retryInFlight = false;
                 if (err instanceof Stopped) throw err;
                 if ((err as { authenticationFailed?: boolean }).authenticationFailed) {
-                    this.setState('auth-failed', 'The mail server rejected the password. Update it in Settings.');
+                    this.passwordRefused();
                     throw new Stopped();
                 }
                 this.setState('offline', describe(err));
@@ -414,6 +438,13 @@ export class AccountWorker extends EventEmitter {
 
     // ------------------------------------------------------------------ watch connection
 
+    /** Starts the watch connection's loop unless it's already running. */
+    private startWatching(): void {
+        if (this.stopped || this.watchRunning) return;
+        this.watchRunning = true;
+        this.watching = this.keepWatching().finally(() => { this.watchRunning = false; });
+    }
+
     private async keepWatching(): Promise<void> {
         let delay = this.opts.backoffMinMs;
         while (!this.stopped && this.state !== 'auth-failed') {
@@ -436,7 +467,7 @@ export class AccountWorker extends EventEmitter {
             } catch (err) {
                 if (err instanceof Stopped) return;
                 if ((err as { authenticationFailed?: boolean }).authenticationFailed) {
-                    this.setState('auth-failed', 'The mail server rejected the password. Update it in Settings.');
+                    this.passwordRefused();
                     return;
                 }
                 this.log(`[${this.account.email}] watch connection: ${describe(err)}`);
@@ -531,6 +562,34 @@ export class AccountWorker extends EventEmitter {
             }
             if (again) this.schedulePreviews();
         }, 500);
+    }
+
+    /**
+     * The host refused the password: stop logging in, then try once more after a long wait (the
+     * work connection; the watch connection follows when it gets in). Hosts sometimes refuse a good
+     * password for a while (owner, 2026-11-10); a wrong one costs one failed login per wait.
+     */
+    private passwordRefused(): void {
+        this.setState('auth-failed', 'The mail server rejected the password. Update it in Settings.');
+        if (this.stopped || this.authTimer || this.retryInFlight) return;
+        this.loginRetry = false; // a refusal that arrives late starts the wait over
+        const wait = this.authRetry * (0.9 + Math.random() * 0.2);
+        this.authRetry = Math.min(this.authRetry * 2, this.opts.authRetryMaxMs);
+        this.log(`[${this.account.email}] password refused; trying again in ${Math.round(wait / 60_000)} min`);
+        this.authTimer = setTimeout(() => {
+            this.authTimer = null;
+            if (this.stopped || this.state !== 'auth-failed') return;
+            if (this.work?.usable) {
+                // Only the watch connection was refused: the work one is still signed in.
+                this.setState('online', null);
+                this.startWatching();
+            } else {
+                this.loginRetry = true;
+                this.requestCheck();
+                // A check that began just before (the minute poll) is about to stop: go again after it.
+                void this.pumping?.finally(() => { if (this.loginRetry) this.requestCheck(); });
+            }
+        }, wait);
     }
 
     private setState(state: ConnectionState, error: string | null): void {

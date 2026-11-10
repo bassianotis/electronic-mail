@@ -62,7 +62,7 @@ Ten rules every change keeps. Each has tests in the engine's suite (see `engine/
   - The frame has its own content policy: inline styles only, and no images from outside until you press "Load images" for that message. Tracking pixels are removed.
   - No referrer is sent, and links open in a new tab.
   - The frame's one script, `public/mail-frame.js`, sizes it and reports images and keys.
-- **The app's pages** run under a strict content policy (`script-src 'self'`) with no inline script anywhere. The frame inherits this policy, which is why its helper (and the early theme switch, `public/theme-early.js`) are separate files.
+- **The app's pages** run under a strict content policy (`script-src 'self'`) with no inline script anywhere. The frame inherits this policy, which is why its helper is a separate file.
 - **Requests:**
   - Every request that changes something must be JSON from the same origin. Uploads use their own header instead.
   - Session cookies are HttpOnly, SameSite=Strict and, behind HTTPS, Secure.
