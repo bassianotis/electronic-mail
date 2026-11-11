@@ -37,6 +37,8 @@ export interface ThreadMessage {
     seen: boolean;
     sent: boolean;
     folders: { path: string; role: string }[];
+    /** The message it answers, when that's in this conversation (In-Reply-To, else References). */
+    parentKey: string | null;
 }
 
 export interface ThreadDetail {
@@ -210,6 +212,8 @@ export interface DraftContent {
     attachments: UploadInfo[];
     /** A reply written from another account: the account holding the message it answers. */
     originalAccount: string | null;
+    /** A forward: the Message-ID (without <>) of the message it forwards. */
+    forwardOf: string | null;
 }
 
 export interface TaskEvent {

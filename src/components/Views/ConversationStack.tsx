@@ -1,17 +1,15 @@
 /**
- * A conversation as a stack of cards (Explore 2): the message on top, the two older ones as thin
- * edges peeking above it (clicking one steps back a card), and "⌃ 3 older | 1 newer ⌄" inside the
- * front card at its top right (MessageCard). Scrolling on the stack moves one card per gesture,
- * once the message itself has scrolled to its end. Full height in the reading view; the band above
- * the composer while replying.
+ * A conversation as a stack of cards (Explore 2): the message on top, and while the thread tree is
+ * closed the edges of the older ones above it (clicking one steps back a card). "4 of 9", up / down
+ * and the tree's toggle sit in the front card at its top right (MessageCard). Scrolling on the stack
+ * moves one card per gesture, once the message itself has scrolled to its end. Full height in the
+ * reading view; the band above the composer while replying (docs/design/reading-navigation-spec.md).
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Email } from '../../store/mailStore';
 import { loadBody } from '../../api/bodies';
-import { formatDateTime } from '../../utils/formatDate';
+import { formatDate, formatDateTime } from '../../utils/formatDate';
 import { MessageCard } from './MessageCard';
-import { DURATION, tween } from '../../utils/motion';
 
 interface ConversationStackProps {
     accountId: string;
@@ -29,22 +27,50 @@ interface ConversationStackProps {
     onDownload: (url: string, fallbackName: string) => void;
     /** Text in place of a card's date (a message being sent). */
     dateLabel?: (email: Email) => string | undefined;
+    /** The thread tree beside the card: while it's open, no edges. */
+    treeOpen: boolean;
+    onToggleTree: () => void;
+    /** Your own messages ("Me" in "Replying to Me, Oct 28"). */
+    isMine: (email: Email) => boolean;
+    /** In the band, at the top of the card: "Not the message you're replying to". */
+    bandNote?: React.ReactNode;
+    /** How many messages the conversation has, known from its card before the rest arrives. */
+    expectedCount?: number;
+    /** The message on screen (it trails the one asked for by the moment it takes to draw): the
+     *  counter and the edges follow it, so they change in the same frame as the message. */
+    shownIndex?: number;
+    onShown?: (msgKey: string) => void;
 }
 
-/** The thin edges of the next older cards (1a). */
-const PEEKS = [
-    { height: 12, inset: 16, top: -12, opacity: 0.8 },
-    { height: 12, inset: 32, top: -24, opacity: 0.55 },
+/** Wheel events further apart than this start a new gesture (a trackpad's momentum keeps them closer). */
+const GESTURE_GAP_MS = 100;
+
+/** The older messages' edges above the card (§4): the near one, then the far one. */
+const EDGES = [
+    { height: 14, inset: 14, top: -12 },
+    { height: 12, inset: 28, top: -22 },
 ];
 
 const isPending = (e: Email) => e.msgKey.startsWith('pending-');
 
 export const ConversationStack: React.FC<ConversationStackProps> = ({
     accountId, emails, selectedIndex, onSelect, subject, compact, myAddresses, linkCopied, onCopyLink, onDownload, dateLabel,
+    treeOpen, onToggleTree, isMine, bandNote, expectedCount = 0, shownIndex, onShown,
 }) => {
     const front = emails[selectedIndex];
-    const older = emails.length - 1 - selectedIndex;
+    // Until the conversation arrives only its newest message is here: "9 of 9", the arrows waiting
+    const total = Math.max(emails.length, expectedCount);
+    const arriving = total > emails.length;
+    // Steps count from the message asked for (quick steps add up); what's shown, from the one on screen
+    const older = total - 1 - selectedIndex;
     const newer = selectedIndex;
+    const shown = shownIndex !== undefined && shownIndex >= 0 ? shownIndex : selectedIndex;
+    const shownOlder = total - 1 - shown;
+    // The messages either side of the one asked for, drawn ahead out of sight (MessageCard)
+    const warm = useMemo(
+        () => [emails[selectedIndex - 1], emails[selectedIndex + 1]].filter((e): e is Email => !!e && !isPending(e)),
+        [emails, selectedIndex]
+    );
 
     // The cards either side load ahead, so stepping through draws them at once.
     useEffect(() => {
@@ -53,52 +79,71 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
         }
     }, [accountId, emails, selectedIndex]);
 
-    // Which way the last step went, so the new card comes in from that side.
-    const [step, setStep] = useState({ index: selectedIndex, direction: 0 });
-    if (step.index !== selectedIndex) setStep({ index: selectedIndex, direction: selectedIndex > step.index ? -1 : 1 });
-    const direction = step.direction;
 
     // Original, once turned on, stays on as you step through this conversation (owner, 2026-11-10);
     // the view is remade for each conversation, so the next one starts without it.
     const [showOriginal, setShowOriginal] = useState(false);
 
-    // One card per scroll gesture; the message scrolls first, and a gesture that was scrolling it
-    // doesn't flip the card when it reaches the end (a new gesture does).
-    const lastWheelTime = useRef(0);
+    // "Replying to …" on a message that answers one that isn't just before it in time (§3)
+    const replyingTo = useCallback((m: Email) => {
+        const at = emails.findIndex(e => e.msgKey === m.msgKey);
+        const parentIndex = m.parentKey ? emails.findIndex(e => e.msgKey === m.parentKey) : -1;
+        if (parentIndex < 0 || parentIndex === at + 1) return undefined;
+        const parent = emails[parentIndex];
+        return { label: `${isMine(parent) ? 'Me' : parent.sender}, ${formatDate(parent.date)}`, onOpen: () => onSelect(parentIndex) };
+    }, [emails, isMine, onSelect]);
+
+    // One message per scroll gesture, its momentum included (a trackpad's tail of small events
+    // used to flip a second time once a fixed lock ran out); the message scrolls first, and a
+    // gesture that was scrolling it doesn't flip when it reaches the end (a new gesture does).
     const lastEventTime = useRef(0);
     const inScrollGesture = useRef(false);
+    const flippedThisGesture = useRef(false);
+    // After a swipe has moved on, the rest of it (its momentum) mustn't scroll the next message:
+    // that one's scrolling is held until the swipe ends, so it opens at its top
+    const [scrollHeld, setScrollHeld] = useState(false);
+    const releaseScroll = useRef<number | undefined>(undefined);
+    const holdScroll = () => {
+        setScrollHeld(true);
+        window.clearTimeout(releaseScroll.current);
+        releaseScroll.current = window.setTimeout(() => setScrollHeld(false), GESTURE_GAP_MS + 20);
+    };
+    useEffect(() => () => window.clearTimeout(releaseScroll.current), []);
     const handleWheel = (e: React.WheelEvent) => {
-        const now = Date.now();
-        const isFreshGesture = now - lastEventTime.current > 100;
-        lastEventTime.current = now;
-        if (isFreshGesture) inScrollGesture.current = false;
-
-        const card = e.currentTarget.querySelector('[data-email-card="selected"]');
-        let current: HTMLElement | null = e.target as HTMLElement;
-        if (card && card.contains(current)) {
-            for (let i = 0; i < 20 && current && current !== card; i++) {
-                const style = window.getComputedStyle(current);
-                if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && current.scrollHeight > current.clientHeight + 5) {
-                    const atTop = current.scrollTop <= 2;
-                    const atBottom = current.scrollTop + current.clientHeight >= current.scrollHeight - 2;
-                    if ((e.deltaY < 0 && !atTop) || (e.deltaY > 0 && !atBottom)) {
-                        inScrollGesture.current = true;
-                        return;
-                    }
-                    if (!isFreshGesture) return;
-                    break;
-                }
-                current = current.parentElement;
-            }
+        // When the event happened, not when it's handled: drawing the next message can keep the page
+        // busy for a moment, and the rest of the same swipe, handled late, mustn't read as a new one
+        const at = (e.nativeEvent as WheelEvent & { emTime?: number }).emTime ?? e.timeStamp; // from the body's frame: its own time
+        const isFreshGesture = at - lastEventTime.current > GESTURE_GAP_MS;
+        lastEventTime.current = at;
+        if (isFreshGesture) {
+            inScrollGesture.current = false;
+            flippedThisGesture.current = false;
         }
-        if (inScrollGesture.current && !isFreshGesture) return;
-        if (now < lastWheelTime.current || Math.abs(e.deltaY) < 15) return;
+        if (flippedThisGesture.current) {
+            holdScroll();
+            return;
+        }
+
+        // The message's own scrolling area (found by its marker: no style lookups on every event)
+        const scroller = (e.target as Element).closest?.('[data-message-scroll]') as HTMLElement | null;
+        if (scroller && e.currentTarget.contains(scroller) && scroller.scrollHeight > scroller.clientHeight + 5) {
+            const atTop = scroller.scrollTop <= 2;
+            const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
+            if ((e.deltaY < 0 && !atTop) || (e.deltaY > 0 && !atBottom)) {
+                inScrollGesture.current = true;
+                return;
+            }
+            if (!isFreshGesture) return;
+        }
+        if (inScrollGesture.current || Math.abs(e.deltaY) < 15) return;
         if (e.deltaY > 0 && newer > 0) {
             onSelect(selectedIndex - 1);
-            lastWheelTime.current = now + 600;
+            flippedThisGesture.current = true;
+            holdScroll();
         } else if (e.deltaY < 0 && older > 0) {
             onSelect(selectedIndex + 1);
-            lastWheelTime.current = now + 600;
+            flippedThisGesture.current = true;
+            holdScroll();
         }
     };
 
@@ -106,15 +151,19 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
 
     return (
         <div onWheel={handleWheel} style={{ position: 'relative', height: '100%', pointerEvents: 'auto' }}>
-            {PEEKS.map((peek, k) => {
-                const behind = emails[selectedIndex + 1 + k];
+            {/* Only while the tree is closed, never in the band: one edge for one older message, two for more */}
+            {!treeOpen && !compact && arriving && EDGES.slice(0, Math.min(shownOlder, 2)).map((edge, k) => (
+                <span key={k} aria-hidden="true" style={{ position: 'absolute', zIndex: 2 - k, left: edge.inset, right: edge.inset, top: edge.top, height: edge.height, boxSizing: 'border-box', background: 'var(--stack-edge-bg)', border: '1px solid var(--stack-edge-border)', borderBottom: 0, borderRadius: '8px 8px 0 0' }} />
+            ))}
+            {!treeOpen && !compact && !arriving && EDGES.slice(0, Math.min(shownOlder, 2)).map((edge, k) => {
+                const behind = emails[shown + 1 + k];
                 if (!behind) return null;
                 const label = `Older: ${behind.sender}, ${formatDateTime(behind.date)}`;
                 return (
                     <button
                         key={behind.msgKey}
                         type="button"
-                        onClick={() => onSelect(selectedIndex + 1)}
+                        onClick={() => onSelect(shown + 1)}
                         title={label}
                         aria-label={label}
                         style={{
@@ -122,14 +171,15 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
                             cursor: 'pointer',
                             position: 'absolute',
                             zIndex: 2 - k,
-                            left: peek.inset,
-                            right: peek.inset,
-                            top: peek.top,
-                            height: peek.height,
-                            background: 'var(--surface-card)',
-                            borderRadius: 'var(--radius-tile) var(--radius-tile) 0 0',
-                            boxShadow: 'var(--shadow-message-back)',
-                            opacity: peek.opacity
+                            left: edge.inset,
+                            right: edge.inset,
+                            top: edge.top,
+                            height: edge.height,
+                            boxSizing: 'border-box',
+                            background: 'var(--stack-edge-bg)',
+                            border: '1px solid var(--stack-edge-border)',
+                            borderBottom: 0,
+                            borderRadius: '8px 8px 0 0'
                         }}
                     />
                 );
@@ -149,13 +199,9 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
                     background: 'var(--surface-raised)'
                 }}
             >
-                <motion.div
-                    key={front.msgKey}
-                    initial={direction ? { opacity: 0, y: direction * 14 } : false}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={tween(DURATION.mid)}
-                    style={{ height: '100%' }}
-                >
+                {compact && bandNote}
+                {/* One card for the whole conversation: stepping swaps only the message inside it (MessageCard) */}
+                <div style={{ flex: 1, minHeight: 0 }}>
                     <MessageCard
                         accountId={accountId}
                         email={front}
@@ -164,19 +210,26 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
                         subject={compact ? undefined : subject}
                         compact={compact}
                         myAddresses={myAddresses}
-                        dateLabel={dateLabel?.(front)}
+                        dateLabel={dateLabel}
                         linkCopied={linkCopied}
                         onCopyLink={onCopyLink}
                         showOriginal={showOriginal}
                         onShowOriginal={setShowOriginal}
-                        nav={emails.length > 1 ? {
-                            older,
-                            newer,
+                        scrollHeld={scrollHeld}
+                        warm={warm}
+                        onShown={onShown}
+                        replyingTo={replyingTo}
+                        nav={total > 1 ? {
+                            position: shownOlder + 1,
+                            total,
+                            arriving,
                             onOlder: () => onSelect(selectedIndex + 1),
                             onNewer: () => onSelect(selectedIndex - 1),
+                            treeOpen,
+                            onToggleTree,
                         } : undefined}
                     />
-                </motion.div>
+                </div>
             </article>
         </div>
     );

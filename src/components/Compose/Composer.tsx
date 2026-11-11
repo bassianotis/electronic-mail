@@ -15,13 +15,14 @@
  * cards, Escape closes).
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, File as FileIcon, Forward, Minimize2, Paperclip, Reply, ReplyAll, Send, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, CornerUpLeft, File as FileIcon, Forward, Minimize2, Paperclip, Reply, ReplyAll, Send, Trash2, X } from 'lucide-react';
 import { useComposer } from '../../context/ComposerContext';
 import { useMail } from '../../context/MailContext';
 import { composerTitle, isUploading, type ReplyType } from '../../utils/replyDraft';
 import { RecipientField } from './RecipientField';
 import { fieldLabel, fieldRow } from './styles';
 import { formatSize } from '../../utils/format';
+import { formatDate } from '../../utils/formatDate';
 
 const TYPES: { type: ReplyType; label: string; Icon: typeof Reply }[] = [
     { type: 'reply', label: 'Reply', Icon: Reply },
@@ -80,8 +81,12 @@ const menuItem = (on: boolean): React.CSSProperties => ({
 });
 
 
-export const Composer: React.FC<{ place?: 'docked' | 'corner' }> = ({ place = 'docked' }) => {
-    const { draft, status, sending, waiting, keptLocally, update, changeType, changeFrom, discard, send, retrySave, addFiles, removeAttachment } = useComposer();
+export const Composer: React.FC<{
+    place?: 'docked' | 'corner';
+    /** Docked in its conversation: "Replying to Theo Park, Oct 28" shows that message in the band. */
+    onShowTarget?: () => void;
+}> = ({ place = 'docked', onShowTarget }) => {
+    const { draft, status, sending, waiting, keptLocally, myAddresses, update, changeType, changeFrom, discard, send, retrySave, addFiles, removeAttachment } = useComposer();
     const { accounts } = useMail();
     const [typeOpen, setTypeOpen] = useState(false);
     const [fromOpen, setFromOpen] = useState(false);
@@ -132,6 +137,16 @@ export const Composer: React.FC<{ place?: 'docked' | 'corner' }> = ({ place = 'd
     if (!draft) return null;
 
     const isReply = !!draft.type;
+    // The message it answers (reading-navigation-spec.md §6): a button that shows it in the band
+    const answered = draft.original?.email;
+    const targetLink = onShowTarget && isReply && answered ? (
+        <button type="button" className="em-target-link" onClick={onShowTarget} title="Show it above">
+            <CornerUpLeft size={13} strokeWidth={1.5} aria-hidden="true" style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {draft.type === 'forward' ? 'Forwarding' : 'Replying to'} {answered.mailbox === 'Sent' || myAddresses.includes((answered.senderAddress ?? '').toLowerCase()) ? 'Me' : answered.sender}, {formatDate(answered.date)}
+            </span>
+        </button>
+    ) : null;
     const gutter = isReply ? 34 : 0;
     const from = accounts.find(a => a.id === draft.fromAccountId);
     const uploading = draft.attachments.some(isUploading);
@@ -293,10 +308,11 @@ export const Composer: React.FC<{ place?: 'docked' | 'corner' }> = ({ place = 'd
                     ) : null}
                     onActivate={isReply ? expand : undefined}
                     placeholder="Add people"
-                    trailing={draft.expanded && (!draft.showCc || !draft.showBcc) ? (
-                        <span style={{ marginLeft: 'auto', display: 'flex' }}>
-                            {!draft.showCc && <button type="button" style={linkButton} onClick={() => update({ showCc: true }, false)}>Cc</button>}
-                            {!draft.showBcc && <button type="button" style={linkButton} onClick={() => update({ showBcc: true }, false)}>Bcc</button>}
+                    trailing={(draft.expanded && (!draft.showCc || !draft.showBcc)) || targetLink ? (
+                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                            {targetLink}
+                            {draft.expanded && !draft.showCc && <button type="button" style={linkButton} onClick={() => update({ showCc: true }, false)}>Cc</button>}
+                            {draft.expanded && !draft.showBcc && <button type="button" style={linkButton} onClick={() => update({ showBcc: true }, false)}>Bcc</button>}
                         </span>
                     ) : null}
                 />

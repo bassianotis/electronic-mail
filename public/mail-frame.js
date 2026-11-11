@@ -2,16 +2,20 @@
 // content policy, which the frame inherits, allows no inline script, and the frame's own policy
 // allows exactly this file. It runs in the frame's opaque origin and only talks to the page by
 // postMessage: the body's height and where the paper sheet starts, when its images have loaded (one
-// that fails gets its placeholder back, by the rule in utils/remoteImages.ts), and Escape and the
-// arrow keys (the reading view's shortcuts).
+// that fails gets its placeholder back, by the rule in utils/remoteImages.ts), Escape and the
+// arrow keys (the reading view's shortcuts), and the wheel (so scrolling past a message's end over
+// its body moves on, as it does elsewhere on the card). Each size says how wide the frame was: one
+// measured before the frame had its width is no size at all.
 (function(){
 var root=document.getElementById('em-root');
 function post(m){m.em='mail-frame';parent.postMessage(m,'*');}
-function size(){var r=root.getBoundingClientRect();var h=r.bottom+window.scrollY+(parseFloat(getComputedStyle(root).marginBottom)||0)+(Number(root.getAttribute('data-extra'))||0);var de=document.documentElement;if(de.scrollWidth>de.clientWidth){h+=window.innerHeight-de.clientHeight;}post({type:'size',height:Math.ceil(h),left:Math.round(r.left)});}
+function size(){var r=root.getBoundingClientRect();var h=r.bottom+window.scrollY+(parseFloat(getComputedStyle(root).marginBottom)||0)+(Number(root.getAttribute('data-extra'))||0);var de=document.documentElement;if(de.scrollWidth>de.clientWidth){h+=window.innerHeight-de.clientHeight;}post({type:'size',height:Math.ceil(h),left:Math.round(r.left),width:de.clientWidth});}
 if(window.ResizeObserver){new ResizeObserver(size).observe(root);}
+window.addEventListener('message',function(e){if(e.source===parent&&e.data==='em-measure'){size();}}); // the page asking again (MailFrame)
 window.addEventListener('load',size);
 size();
 document.addEventListener('keydown',function(e){if(e.key==='Escape'||e.key.indexOf('Arrow')===0){post({type:'key',key:e.key});}});
+var wheel=null;window.addEventListener('wheel',function(e){if(!wheel){wheel={type:'wheel',dx:0,dy:0,mode:e.deltaMode,at:performance.timeOrigin+e.timeStamp};requestAnimationFrame(function(){post(wheel);wheel=null;});}wheel.dx+=e.deltaX;wheel.dy+=e.deltaY;},{passive:true}); // at most one a frame, its first event's time
 if(root.getAttribute('data-images')!=='1')return;
 var tpl=document.getElementById('em-ph');
 function name(u){for(var d=0;d<3&&u;d++){var p;try{p=decodeURIComponent(new URL(u,'https://x.invalid').pathname.split('/').filter(Boolean).pop()||'');}catch(e){return '';}if(!/^https?:\/\//i.test(p))return p;u=p;}return '';} // the file name, unwrapped as fileNameOf does (remoteImages.ts)

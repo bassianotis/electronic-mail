@@ -156,6 +156,26 @@ test('views, thread detail, previews and folder list', async () => {
     }
 });
 
+test('a conversation names each message\'s parent: In-Reply-To, else the last References id that is here', async () => {
+    const t = await setup();
+    try {
+        // root ← a ← b; c answers root directly (a branch); d's In-Reply-To is missing, its References end at a;
+        // e answers a message that isn't in the conversation, through References that also name root
+        await deliver(t.phone, 'INBOX', { id: 'root@tree', subject: 'Shift' });
+        await deliver(t.phone, 'INBOX', { id: 'a@tree', subject: 'Re: Shift', inReplyTo: 'root@tree', references: '<root@tree>' });
+        await deliver(t.phone, 'INBOX', { id: 'b@tree', subject: 'Re: Shift', inReplyTo: 'a@tree', references: '<root@tree> <a@tree>' });
+        await deliver(t.phone, 'INBOX', { id: 'c@tree', subject: 'Re: Shift', inReplyTo: 'root@tree', references: '<root@tree>' });
+        await deliver(t.phone, 'INBOX', { id: 'd@tree', subject: 'Re: Shift', references: '<root@tree> <a@tree>' });
+        await deliver(t.phone, 'INBOX', { id: 'e@tree', subject: 'Re: Shift', inReplyTo: 'gone@tree', references: '<root@tree> <gone@tree>' });
+        await until(async () => (await t.api(`/accounts/acct-1/threads/${encodeURIComponent('root@tree')}`)).body.messages?.length === 6);
+        const detail = await t.api(`/accounts/acct-1/threads/${encodeURIComponent('root@tree')}`);
+        const parents = Object.fromEntries((detail.body.messages as { msgKey: string; parentKey: string | null }[]).map(m => [m.msgKey, m.parentKey]));
+        assert.deepEqual(parents, { 'root@tree': null, 'a@tree': 'root@tree', 'b@tree': 'a@tree', 'c@tree': 'root@tree', 'd@tree': 'a@tree', 'e@tree': 'root@tree' });
+    } finally {
+        await t.close();
+    }
+});
+
 test('body: charset decoded, inline image inlined, attachments listed, cached', async () => {
     const t = await setup();
     try {

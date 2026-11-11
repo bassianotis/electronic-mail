@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import { DURATION, tween } from '../../utils/motion';
 import { Plus, Edit2, Trash2, Archive } from 'lucide-react';
 import { useDragDrop } from '../../context/DragDropContext';
 import { useMail } from '../../context/MailContext';
@@ -155,6 +156,7 @@ export const BucketsDock: React.FC<BucketsDockProps> = ({ activeBucket, onSelect
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
+                        transition={tween(DURATION.mid)} // menus: 200ms (utils/motion.ts)
                         style={{
                             position: 'fixed',
                             top: contextMenu.y - 100, // Show above cursor

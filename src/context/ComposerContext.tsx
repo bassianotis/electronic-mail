@@ -101,6 +101,8 @@ export interface SentMessage {
     text: string;
     to: { name: string | null; address: string }[];
     cc: { name: string | null; address: string }[];
+    /** The message it answers or forwards (its key), when known: the thread tree puts it under that. */
+    targetKey: string | null;
 }
 
 /** Asks the app to show a conversation (Open on a draft notice; App.tsx listens). */
@@ -135,6 +137,12 @@ interface ComposerContextType {
     /** A saved draft, from `accountId`'s Drafts; a reply's original may be in `originalAccountId`. */
     openSaved: (from: { accountId: string; content: DraftContent; threadId: string | null; email?: Email | null; originalAccountId?: string }) => Promise<void>;
     changeType: (type: ReplyType) => Promise<void>;
+    /**
+     * "Reply to this one instead": the reply (or forward) moves to another message of its
+     * conversation. Threading, the quote and the recipients its type filled in follow it; what was
+     * typed and the people added by hand stay. Resolves to an Undo, or null when nothing changed.
+     */
+    retarget: (email: Email) => Promise<(() => void) | null>;
     /** Changing From: the draft moves to that account's Drafts folder and sends from there. */
     changeFrom: (accountId: string) => Promise<void>;
     /** Back from the corner: a reply goes back under its conversation (opened if need be). */
@@ -164,6 +172,8 @@ const draftFields = (d: ComposerDraft, signature: string | null) => ({
     attachments: d.attachments.map(a => a.id).filter((id): id is string => !!id),
     // A reply from another account than its original's: where its conversation is, for reopening.
     originalAccount: d.original && d.original.accountId !== d.fromAccountId ? d.original.accountId : null,
+    // A forward: the message it forwards, so reopening the draft finds it (a private header)
+    forwardOf: d.type === 'forward' ? d.forwardOf ?? null : null,
 });
 
 const signatureOf = (accounts: { id: string; signature: string | null }[], accountId: string) =>
@@ -403,6 +413,7 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
             subject: content.subject, subjectEdited: true,
             body: parts.body, quotedHtml: parts.quotedHtml, quotedText: parts.quotedText,
             inReplyTo: content.inReplyTo ?? undefined, references: content.references,
+            forwardOf: parts.forward ? email?.msgKey ?? content.forwardOf ?? undefined : undefined,
             attachments: content.attachments.map(a => ({ key: a.id, id: a.id, filename: a.filename, size: a.size })),
             draftKey: content.draftKey ?? crypto.randomUUID(),
             expanded: !type,
@@ -427,6 +438,36 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
             attachments: current.attachments.filter(a => !a.forwarded),
         }));
         if (type === 'forward') copyForwardedFiles(d.id, d.original.accountId, d.original.email.msgKey, start.files);
+    }, [myAddresses, update, copyForwardedFiles]);
+
+    const retarget = useCallback(async (email: Email) => {
+        const d = draftRef.current;
+        if (!d?.original || !d.type || d.original.email?.msgKey === email.msgKey) return null;
+        const type = d.type;
+        const start = await buildReply(d.original.accountId, email, type, myAddresses);
+        const now = draftRef.current;
+        if (!now || now.id !== d.id || now.type !== type) return null;
+        // What Undo puts back (the text typed meanwhile stays)
+        const before: Partial<ComposerDraft> = {
+            original: now.original, to: now.to, cc: now.cc, showCc: now.showCc, subject: now.subject,
+            quotedHtml: now.quotedHtml, quotedText: now.quotedText, replyTo: now.replyTo, forwardOf: now.forwardOf,
+            inReplyTo: now.inReplyTo, references: now.references, attachments: now.attachments,
+        };
+        update(current => ({
+            original: current.original && { ...current.original, email },
+            to: withRecipients(start.to, current.to.filter(r => !r.auto)),
+            cc: withRecipients(start.cc, current.cc.filter(r => !r.auto)),
+            showCc: current.showCc || start.cc.length > 0,
+            subject: current.subjectEdited ? current.subject : start.subject,
+            quotedHtml: start.quotedHtml, quotedText: start.quotedText,
+            replyTo: start.replyTo, forwardOf: start.forwardOf, inReplyTo: undefined, references: undefined,
+            attachments: type === 'forward' ? current.attachments.filter(a => !a.forwarded) : current.attachments,
+        }));
+        if (type === 'forward') copyForwardedFiles(d.id, d.original.accountId, email.msgKey, start.files);
+        return () => {
+            if (draftRef.current?.id !== d.id) return;
+            update(before);
+        };
     }, [myAddresses, update, copyForwardedFiles]);
 
     // Saves and moves share one queue: a move waits for a save in progress, and saves wait for it.
@@ -566,6 +607,7 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
                 fromAccountId: current.fromAccountId,
                 from: { name: fromAccount?.displayName ?? null, address: fromAccount?.email ?? '' },
                 subject: current.subject, html: content.html, text: current.body, to: content.to, cc: content.cc,
+                targetKey: current.original?.email?.msgKey ?? null,
             };
             // Undo: take it back while the engine still holds it, then show the draft as it was.
             const undo = async (item: OutboxItem) => {
@@ -735,8 +777,8 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const value = useMemo(() => ({
         draft, status, sending, waiting, keptLocally, myAddresses, recentDraft, discarding,
-        update, openNew, openReply, openSaved, changeType, changeFrom, dock, close, discard, send, retrySave, addFiles, removeAttachment, onSent,
-    }), [draft, status, sending, waiting, keptLocally, myAddresses, recentDraft, discarding, update, openNew, openReply, openSaved, changeType, changeFrom, dock, close, discard, send, retrySave, addFiles, removeAttachment, onSent]);
+        update, openNew, openReply, openSaved, changeType, retarget, changeFrom, dock, close, discard, send, retrySave, addFiles, removeAttachment, onSent,
+    }), [draft, status, sending, waiting, keptLocally, myAddresses, recentDraft, discarding, update, openNew, openReply, openSaved, changeType, retarget, changeFrom, dock, close, discard, send, retrySave, addFiles, removeAttachment, onSent]);
 
     return <ComposerContext.Provider value={value}>{children}</ComposerContext.Provider>;
 };

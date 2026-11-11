@@ -11,6 +11,7 @@ import { formatListDate } from '../../utils/formatDate';
 import { type Arrivals, useArrivals, useEntrance } from '../../hooks/useArrivals';
 import { AfterDelay, ArchiveRowSkeleton } from '../Loading/Skeletons';
 import { LoadMore } from '../Loading/LoadMore';
+import { usePublishList, type ListKey } from '../../hooks/conversationLists';
 import { DURATION, noNativeAnimation, tween } from '../../utils/motion';
 import { inDockStrip } from '../../utils/dropTargets';
 import { useDragLook } from '../../hooks/useDragLook';
@@ -22,7 +23,8 @@ const ROW_ESTIMATE = 106 + 16;
 
 
 interface ArchiveViewProps {
-    onSelectEmail: (email: Email) => void;
+    /** Opens a conversation, saying which list it was opened from (for previous / next). */
+    onSelectEmail: (email: Email, list?: ListKey) => void;
 }
 
 export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
@@ -30,6 +32,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
     // The old app listed conversations holding only mail you sent here too; they still are.
     const list = useThreadList(activeAccountId, folders.archive ? { location: folders.archive, withSentOnly: true } : null, 50);
     const cards = useMemo(() => list.threads.map(cardFromThread), [list.threads]);
+    usePublishList('archive', cards, { total: list.count, hasMore: list.hasMore, loadMore: list.loadMore });
     const emailCount = useMemo(() => cards.reduce((n, c) => n + (c.threadCount ?? 1), 0), [cards]);
     const arrivals = useArrivals(!list.loading, cards);
 
@@ -109,10 +112,11 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
                                     ref={virtualizer.measureElement}
                                     style={{
                                         position: 'absolute',
-                                        top: 0,
                                         left: 0,
                                         width: '100%',
-                                        transform: `translateY(${row.start - scroller.top}px)`,
+                                        // top, not a transform: a transform would make each row a layer of its own,
+                                        // and the rows below would cover a card dragged out of it
+                                        top: row.start - scroller.top,
                                         paddingBottom: 'var(--space-md)'
                                     }}
                                 >
@@ -120,7 +124,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
                                         email={email}
                                         threadCount={email.threadCount}
                                         arrivals={arrivals}
-                                        onClick={() => onSelectEmail(email)}
+                                        onClick={() => onSelectEmail(email, 'archive')}
                                         onUnarchive={(email, targetLocation) => void handleRestore(email, targetLocation)}
                                     />
                                 </div>
@@ -153,7 +157,6 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
         const { buckets } = useMail();
         const offline = useServerUnreachable(); // filing waits for the server
         const [showSenderEmail, setShowSenderEmail] = useState(false);
-        const [isDropped, setIsDropped] = useState(false);
         const isDraggingRef = React.useRef(false);
         const cardRef = React.useRef<HTMLDivElement | null>(null);
         const setRef = (el: HTMLDivElement | null) => {
@@ -161,12 +164,13 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
             if (typeof ref === 'function') ref(el);
             else if (ref) ref.current = el;
         };
-        const look = useDragLook(cardRef);
+        const look = useDragLook(cardRef, 0.6);
         const enters = useEntrance(arrivals, email.id);
 
         const handleDragStart = () => {
             isDraggingRef.current = true;
             setIsDragging(true);
+            look.start();
         };
 
         const handleDrag = (_event: PointerEvent, info: PanInfo) => {
@@ -185,6 +189,7 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
                 ) {
                     foundTarget = 'inbox';
                     setHoveredBucketId(foundTarget);
+                    look.aim(foundTarget);
                     return;
                 }
             }
@@ -207,6 +212,7 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
                 }
             }
             setHoveredBucketId(foundTarget);
+            look.aim(foundTarget);
         };
 
         const handleDragEnd = (_event: PointerEvent, info: PanInfo) => {
@@ -251,11 +257,7 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
             }
 
             const to = targetLocation;
-            void look.land(to, () => {
-                if (!to) return;
-                setIsDropped(true); // Hide immediately to prevent ghost animation
-                onUnarchive(email, to);
-            });
+            void look.land(to, () => { if (to) onUnarchive(email, to); });
 
             setTimeout(() => {
                 isDraggingRef.current = false;
@@ -277,26 +279,18 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
                 onPointerDownCapture={look.grab}
                 className={`em-card${isThread ? ` thread-stack${threadCount === 2 ? ' thread-stack-pair' : ''}` : ''}`}
                 drag={!isSentOnly && !offline}
-                dragSnapToOrigin
                 dragElastic={0.1}
                 dragMomentum={false}
                 onDragStart={handleDragStart}
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
-                whileDrag={look.whileDrag({
-                    scale: 0.6,
-                    opacity: 0.9,
-                    borderRadius: 'var(--radius-lg)',
-                    zIndex: 9999,
-                    boxShadow: 'var(--shadow-floating)',
-                    cursor: 'grabbing'
-                })}
+                whileDrag={look.whileDrag}
                 onClick={handleClick}
                 initial={enters ? { opacity: 0, scale: 0.95 } : false}
                 onUpdate={noNativeAnimation}
-                animate={{ opacity: isDropped ? 0 : 1, scale: isDropped ? 0.95 : 1, y: 0 }}
+                animate={look.animate({ opacity: 1, scale: 1 })}
                 exit={{ opacity: 0, scale: 0.97, transition: tween(DURATION.mid) }}
-                transition={tween(isDropped ? DURATION.fast : DURATION.mid)}
+                transition={tween(DURATION.mid)}
                 style={{
                     backgroundColor: 'var(--surface-card)',
                     border: '1px solid var(--color-border)',
@@ -307,7 +301,10 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
                     flexDirection: 'column',
                     gap: 'var(--space-sm)',
                     position: 'relative',
-                    transformOrigin: look.origin
+                    transformOrigin: look.origin,
+                    x: look.x,
+                    y: look.y,
+                    zIndex: look.raised ? 9999 : undefined
                 }}
             >
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>

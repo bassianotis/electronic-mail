@@ -6,6 +6,7 @@ import { useMail } from '../../context/MailContext';
 import { api, acct, errorText } from '../../api/client';
 import type { ViewPage } from '../../api/types';
 import { cardFromThread } from '../../utils/emailMapper';
+import { usePublishList, type ListKey } from '../../hooks/conversationLists';
 import { formatListDate } from '../../utils/formatDate';
 import { AfterDelay, SearchResultSkeleton } from '../Loading/Skeletons';
 import { BucketGlyph } from '../Buckets/BucketGlyph';
@@ -15,7 +16,8 @@ import { formatCount } from '../../utils/format';
 interface SearchOverlayProps {
     isOpen: boolean;
     onClose: () => void;
-    onSelectEmail: (email: Email) => void;
+    /** Opens a conversation, saying which list it was opened from (for previous / next). */
+    onSelectEmail: (email: Email, list?: ListKey) => void;
 }
 
 /**
@@ -63,6 +65,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
         const email = cardFromThread(t);
         return { ...email, locationLabel: folderLabel(email.location, email.mailbox) };
     }), [page, folderLabel]);
+    usePublishList('search', results);
 
     return (
         <AnimatePresence>
@@ -153,7 +156,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                                     <div
                                         key={email.id}
                                         onClick={() => {
-                                            onSelectEmail(email);
+                                            onSelectEmail(email, 'search');
                                             onClose();
                                         }}
                                         style={{

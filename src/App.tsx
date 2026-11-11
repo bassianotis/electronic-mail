@@ -24,6 +24,7 @@ import { DragDropProvider } from './context/DragDropContext';
 import { useMail, MailProvider } from './context/MailContext';
 import { ComposerProvider, OPEN_CONVERSATION_EVENT, useComposer } from './context/ComposerContext';
 import { type Email } from './store/mailStore';
+import type { ListKey } from './hooks/conversationLists';
 import { api, errorText, paths, AUTH_REQUIRED_EVENT, SESSION_RESTORED_EVENT } from './api/client';
 import type { AuthStatus, DraftContent, DraftSummary, ThreadDetail } from './api/types';
 import { cardFromThread, messageFromThread } from './utils/emailMapper';
@@ -144,12 +145,13 @@ function App() {
 
 function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boolean; setShowOnboarding: (v: boolean) => void }) {
     const [activeBucketId, setActiveBucketId] = useState('inbox');
-    // The open conversation, and a reply draft to open in it (one picked in Up next)
-    const [selection, setSelection] = useState<{ email: Email; draft?: string } | null>(null);
+    // The open conversation, a draft to open in it (one picked in Up next), the list it was opened
+    // from (previous / next follow it), and whether it replaced another one (then no entrance)
+    const [selection, setSelection] = useState<{ email: Email; draft?: string; list?: ListKey; switched?: boolean } | null>(null);
     const selectedEmail = selection?.email ?? null;
     // "Sign in again" comes back to the conversation that's open
     useEffect(() => { setOpenThread(selectedEmail?.threadId ?? null); }, [selectedEmail]);
-    const setSelectedEmail = useCallback((email: Email | null) => setSelection(email ? { email } : null), []);
+    const setSelectedEmail = useCallback((email: Email | null, list?: ListKey) => setSelection(email ? { email, list } : null), []);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const { draft: composing, openNew, openSaved, close: closeDraft, update: updateDraft } = useComposer();
     // A conversation to open once its account is the active one (Back from the corner, across accounts)
@@ -249,6 +251,14 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
         } else {
             api.get<{ draft: DraftContent }>(paths.draft(activeAccountId, draft.msgKey))
                 .then(async ({ draft: content }) => {
+                    // A forward goes back to the conversation of the message it forwards, if it's here
+                    if (content.forwardOf) {
+                        const detail = await api.get<ThreadDetail>(paths.thread(activeAccountId, content.forwardOf)).catch(() => null);
+                        if (detail) {
+                            setSelection({ email: cardFromThread(detail.thread), draft: draft.msgKey });
+                            return;
+                        }
+                    }
                     setSelectedEmail(null);
                     // A reply written from this account to mail in the other one: back in that
                     // conversation (its tab first), else centred.
@@ -321,6 +331,9 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
                     key={selectedEmail.threadId}
                     email={selectedEmail}
                     openDraft={selection?.draft}
+                    list={selection?.list}
+                    onOpen={(next, list) => setSelection(prev => ({ email: next, list, switched: !!prev }))}
+                    switched={selection?.switched}
                     onClose={() => setSelectedEmail(null)}
                 />
             )}

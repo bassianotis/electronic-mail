@@ -84,6 +84,11 @@ export interface ThreadMessage {
     seen: boolean;
     sent: boolean;
     folders: { path: string; role: string }[];
+    /**
+     * The message it answers, when that's in this conversation: its In-Reply-To, else the last id
+     * in its References that is here (the thread tree, docs/design/reading-navigation-spec.md §2).
+     */
+    parentKey: string | null;
 }
 
 /** A conversation's messages, oldest first, without copies that only exist in Junk/Trash/Drafts. */
@@ -92,31 +97,40 @@ export function threadDetail(store: Store, account: string, threadId: string): {
         WHERE t.account = ? AND t.thread_id = ?`).get(account, threadId);
     if (!row) return null;
     const thread = toCard(row);
-    const rows = store.db.prepare(`SELECT m.msg_key, m.message_id, m.subject, m.from_name, m.from_addr, m.date, m.preview,
+    const rows = store.db.prepare(`SELECT m.msg_key, m.message_id, m.in_reply_to, m.refs, m.subject, m.from_name, m.from_addr, m.date, m.preview,
             p.folder, p.seen, f.role
         FROM message m
         JOIN placement p ON p.account = m.account AND p.msg_key = m.msg_key
         JOIN folder f ON f.account = p.account AND f.path = p.folder
         WHERE m.account = ? AND m.thread_id = ?
         ORDER BY m.date IS NULL, m.date, m.msg_key`).all(account, threadId) as {
-            msg_key: string; message_id: string | null; subject: string | null; from_name: string | null; from_addr: string | null;
-            date: string | null; preview: string | null; folder: string; seen: number; role: string;
+            msg_key: string; message_id: string | null; in_reply_to: string | null; refs: string; subject: string | null;
+            from_name: string | null; from_addr: string | null; date: string | null; preview: string | null; folder: string; seen: number; role: string;
         }[];
     const byKey = new Map<string, ThreadMessage>();
+    const answers = new Map<string, string[]>(); // msg_key → the ids it answers, nearest first
     for (const r of rows) {
         let msg = byKey.get(r.msg_key);
         if (!msg) {
             msg = { msgKey: r.msg_key, messageId: r.message_id, subject: r.subject, fromName: r.from_name, fromAddr: r.from_addr,
-                date: r.date, preview: r.preview, seen: true, sent: false, folders: [] };
+                date: r.date, preview: r.preview, seen: true, sent: false, folders: [], parentKey: null };
             byKey.set(r.msg_key, msg);
+            answers.set(r.msg_key, [r.in_reply_to, ...(JSON.parse(r.refs) as string[]).reverse()].filter((id): id is string => !!id).map(bare));
         }
         msg.folders.push({ path: r.folder, role: r.role });
         if (r.role === 'sent') msg.sent = true;
         else if (!r.seen && !['junk', 'trash', 'drafts'].includes(r.role)) msg.seen = false;
     }
     const messages = [...byKey.values()].filter(m => m.folders.some(f => !['junk', 'trash', 'drafts'].includes(f.role)));
+    const keyOf = new Map(messages.filter(m => m.messageId).map(m => [bare(m.messageId!), m.msgKey]));
+    for (const m of messages) {
+        const parent = answers.get(m.msgKey)!.map(id => keyOf.get(id)).find(k => k && k !== m.msgKey);
+        m.parentKey = parent ?? null;
+    }
     return { thread, messages };
 }
+
+const bare = (id: string) => id.trim().replace(/^<|>$/g, '');
 
 /** Every folder with its role and thread counts, including empty buckets (for the bucket dock). */
 export function folderList(store: Store, account: string): { path: string; role: string; count: number; unreadThreads: number }[] {

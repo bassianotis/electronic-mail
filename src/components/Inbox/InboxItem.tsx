@@ -1,4 +1,5 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { onPointerRecheck, pointerIsOver } from '../../utils/pointer';
 import { motion, useDragControls } from 'framer-motion';
 import { type Email } from '../../store/mailStore';
 import { useDragDropActions } from '../../context/DragDropContext';
@@ -41,6 +42,13 @@ interface InboxItemProps {
 
 export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucket, onDone, onClick, threadCount, onViewThread, hasDraft, arrivals }) => {
     const [isHovered, setIsHovered] = React.useState(false);
+    // A card that slid into place under a still cursor (the one above it archived) gets no "mouse
+    // entered", so once it settles it checks for itself: Archive shows whenever the mouse is over it.
+    const checkHover = useCallback(() => {
+        const over = pointerIsOver(itemRef.current);
+        setIsHovered(was => (was === over ? was : over));
+    }, []);
+    useEffect(() => onPointerRecheck(checkHover), [checkHover]);
     const itemRef = useRef<HTMLDivElement>(null);
     const { setHoveredBucketId, setIsDragging } = useDragDropActions();
     const { buckets, markThreadSeen, activeAccount, activeAccountId, download, accounts } = useMail();
@@ -61,9 +69,10 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
         () => (paper ? prepareBody(sanitizeHtml(bodyContent), 'paper', images.allowed) : prepareBody(stripToTheme(sanitizeHtml(bodyContent)).html, 'theme', images.allowed)),
         [bodyContent, paper, images.allowed]
     );
-    const look = useDragLook(itemRef);
     const attachments = body?.attachments ?? [];
     const enters = useEntrance(arrivals, email.id);
+    // Mail arriving while you look slides up 20px into place (the hook moves it: its y is the drag's)
+    const look = useDragLook(itemRef, 0.4, enters ? 20 : 0);
 
     const dragControls = useDragControls();
 
@@ -71,9 +80,19 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
 
     // Control layout animation to prevent double-expansion
     const [enableLayoutAnim, setEnableLayoutAnim] = useState(false);
-
-    // Track when hovering over a bucket for enhanced transparency
-    const [isOverBucket, setIsOverBucket] = useState(false);
+    // This card opening or closing moves at the slow, full pace; anything else (a gap closing as
+    // a card above leaves) at 200ms, as in buckets
+    const [lastExpanded, setLastExpanded] = useState(isExpanded);
+    const [resizing, setResizing] = useState(false);
+    if (lastExpanded !== isExpanded) {
+        setLastExpanded(isExpanded);
+        setResizing(true);
+    }
+    useEffect(() => {
+        if (!resizing) return;
+        const timer = setTimeout(() => setResizing(false), DURATION.slow * 1000 + 50);
+        return () => clearTimeout(timer);
+    }, [resizing]);
 
     // Track drag origin to shrink towards the mouse
     const [dragOrigin, setDragOrigin] = useState('top center');
@@ -116,6 +135,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
     const handleDragStart = () => {
         isDraggingRef.current = true;
         setIsDragging(true);
+        look.start();
     };
 
     const handleDrag = (_event: any, info: any) => {
@@ -134,6 +154,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
             ) {
                 foundBucketId = 'archive';
                 setHoveredBucketId(foundBucketId);
+                look.aim(foundBucketId);
                 return;
             }
         }
@@ -156,13 +177,12 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
             }
         }
         setHoveredBucketId(foundBucketId);
-        setIsOverBucket(foundBucketId !== null);
+        look.aim(foundBucketId);
     };
 
     const handleDragEnd = (_event: any, info: any) => {
         setIsDragging(false);
         setHoveredBucketId(null);
-        setIsOverBucket(false);
 
         const dropPoint = { x: info.point.x, y: info.point.y };
         let droppedBucketId: string | null = null;
@@ -237,37 +257,30 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
             <motion.div
                 className={isThread ? `thread-stack${threadCount === 2 ? ' thread-stack-pair' : ''}` : undefined}
                 ref={itemRef}
-                layout={enableLayoutAnim}
+                // Its own size, opening and closing; moving up into a gap is the list's (TriageInbox)
+                layout={enableLayoutAnim && resizing}
                 drag={!offline}
                 dragControls={dragControls}
                 dragListener={!isExpanded} // When expanded, only drag from handle
-                dragSnapToOrigin
                 dragElastic={0.1}
                 dragMomentum={false}
                 onDragStart={handleDragStart}
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
-                whileDrag={look.whileDrag({
-                    scale: 0.4,
-                    opacity: isOverBucket ? 0.15 : 0.5,
-                    borderRadius: 'var(--radius-lg)',
-                    zIndex: 9999,
-                    boxShadow: 'var(--shadow-floating)',
-                    cursor: 'grabbing',
-                    transition: { opacity: tween(DURATION.fast) }
-                })}
+                whileDrag={look.whileDrag}
                 onPointerDownCapture={look.grab}
-                initial={enters ? { opacity: 0, y: 20 } : false}
+                initial={enters ? { opacity: 0 } : false}
                 onUpdate={noNativeAnimation}
-                animate={{
+                animate={look.animate({
                     opacity: 1,
-                    y: 0,
                     boxShadow: isExpanded ? 'var(--shadow-lg)' : (isHovered ? 'var(--shadow-md)' : 'var(--shadow-sm)')
-                }}
-                // Fades and moves; the cards below close the gap with the list's layout animation
-                exit={{ opacity: 0, y: -8, transition: tween(DURATION.mid) }}
+                })}
+                // Hover's shadow is quick; closing a gap matches the buckets' (200ms); opening a card takes its time
+                transition={{ default: tween(DURATION.slow), boxShadow: tween(DURATION.fast), layout: tween(resizing ? DURATION.slow : DURATION.mid) }}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
+                onLayoutAnimationComplete={checkHover}
+                onAnimationComplete={checkHover}
                 onClick={handleClick}
                 style={{
                     position: 'relative',
@@ -277,7 +290,10 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                     border: '1px solid var(--color-border)',
                     cursor: isExpanded ? 'default' : 'grab',
                     overflow: 'hidden',
-                    transformOrigin: look.origin ?? dragOrigin
+                    transformOrigin: look.origin ?? dragOrigin,
+                    x: look.x,
+                    y: look.y,
+                    zIndex: look.raised ? 9999 : undefined
                 }}
             >
                 <div
@@ -400,7 +416,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                             animate={{ opacity: isHovered || isExpanded ? 1 : 0 }}
                                             transition={tween(DURATION.fast)}
                                             onClick={handleArchive}
-                                            whileTap={{ scale: 0.97 }}
+                                            whileTap={{ scale: 0.97, transition: tween(DURATION.fast) }}
                                             style={{
                                                 position: 'absolute',
                                                 right: 0,

@@ -44,6 +44,7 @@ export function messageFromThread(m: ThreadMessage, thread: ThreadCard): Email {
         location: thread.location,
         threadCount: thread.messageCount,
         mailbox: m.sent ? 'Sent' : undefined,
+        parentKey: m.parentKey ?? null,
     };
 }
 

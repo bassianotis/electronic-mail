@@ -9,7 +9,8 @@ import { DURATION, tween } from './utils/motion'
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
         <ErrorBoundary>
-            <MotionConfig transition={tween(DURATION.slow)}>
+            {/* reducedMotion "user": with Reduce motion on, framer keeps fades and drops movement (motion-audit.md) */}
+            <MotionConfig transition={tween(DURATION.slow)} reducedMotion="user">
                 <App />
             </MotionConfig>
         </ErrorBoundary>

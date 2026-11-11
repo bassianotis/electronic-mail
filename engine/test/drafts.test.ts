@@ -132,6 +132,29 @@ test('a reply draft keeps its threading; sending it removes the draft only after
     }
 });
 
+test('a forward draft remembers the message it forwards, without joining its conversation', async () => {
+    const t = await setup();
+    try {
+        await deliver(t.phone, 'INBOX', { id: 'plans@example.com', subject: 'Plans', from: 'ada@example.com' });
+        await t.synced();
+        const saved = await t.drafts.save(t.worker, t.from, t.accountId, crypto.randomUUID(), { ...blank, subject: 'Fwd: Plans', text: 'See below', forwardOf: 'plans@example.com' });
+        await t.synced();
+        const opened = await t.drafts.open(t.worker, t.accountId, saved.msgKey);
+        assert.equal(opened.forwardOf, 'plans@example.com');
+        assert.equal(opened.inReplyTo, null, 'a forward carries no threading');
+        assert.notEqual(t.drafts.list(t.accountId).find(d => d.msgKey === saved.msgKey)?.threadId, 'plans@example.com');
+
+        // A message the cache doesn't know adds nothing; a reply never carries it
+        const unknown = await t.drafts.save(t.worker, t.from, t.accountId, crypto.randomUUID(), { ...blank, subject: 'Fwd: ?', forwardOf: 'nowhere@example.com' });
+        const reply = await t.drafts.save(t.worker, t.from, t.accountId, crypto.randomUUID(), { ...blank, subject: 'Re: Plans', replyTo: 'plans@example.com', forwardOf: 'plans@example.com' });
+        await t.synced();
+        assert.equal((await t.drafts.open(t.worker, t.accountId, unknown.msgKey)).forwardOf, null);
+        assert.equal((await t.drafts.open(t.worker, t.accountId, reply.msgKey)).forwardOf, null);
+    } finally {
+        await t.close();
+    }
+});
+
 test('a continued draft keeps its own threading and quote pictures, even when the original is not in this account', async () => {
     const t = await setup();
     try {

@@ -9,11 +9,13 @@ import { AnimatePresence } from 'framer-motion';
 import { useArrivals } from '../../hooks/useArrivals';
 import { AfterDelay, BucketCardSkeleton } from '../Loading/Skeletons';
 import { LoadMore } from '../Loading/LoadMore';
+import { usePublishList, type ListKey } from '../../hooks/conversationLists';
 import { formatCount } from '../../utils/format';
 
 interface BucketGalleryProps {
     bucket: Bucket;
-    onSelectEmail: (email: Email) => void;
+    /** Opens a conversation, saying which list it was opened from (for previous / next). */
+    onSelectEmail: (email: Email, list?: ListKey) => void;
 }
 
 type GroupBy = 'none' | 'sender';
@@ -54,6 +56,11 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
         return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
     }, [cards, groupBy]);
 
+    // Previous / next follow the order shown: by sender when grouped
+    const listKey: ListKey = `bucket:${bucket.id}`;
+    const shownOrder = React.useMemo(() => (groupedEmails ? groupedEmails.flatMap(([, emails]) => emails) : cards), [groupedEmails, cards]);
+    usePublishList(listKey, shownOrder, { total: list.count, hasMore: list.hasMore, loadMore: list.loadMore });
+
     const renderGrouped = () => {
         if (!groupedEmails) return null;
 
@@ -79,7 +86,7 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                                     <EmailCard
                                         key={email.id}
                                         email={email}
-                                        onClick={() => onSelectEmail(email)}
+                                        onClick={() => onSelectEmail(email, listKey)}
                                         onBucket={handleBucketEmail}
                                         threadCount={email.threadCount}
                                         hasDraft={draftThreadIds.has(email.threadId)}
@@ -106,7 +113,7 @@ export const BucketGallery: React.FC<BucketGalleryProps> = ({ bucket, onSelectEm
                         <EmailCard
                             key={email.id}
                             email={email}
-                            onClick={() => onSelectEmail(email)}
+                            onClick={() => onSelectEmail(email, listKey)}
                             onBucket={handleBucketEmail}
                             threadCount={email.threadCount}
                             hasDraft={draftThreadIds.has(email.threadId)}

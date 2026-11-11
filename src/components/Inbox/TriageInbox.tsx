@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle } from 'lucide-react';
 import { InboxItem } from './InboxItem';
@@ -13,12 +13,17 @@ import type { DraftSummary } from '../../api/types';
 import { useArrivals } from '../../hooks/useArrivals';
 import { AfterDelay, Bone, InboxCardSkeleton } from '../Loading/Skeletons';
 import { useUpNext } from '../../hooks/useUpNext';
+import { usePublishList, type ListKey } from '../../hooks/conversationLists';
+import { watchForMoves } from '../../utils/pointer';
+import { useDragDrop } from '../../context/DragDropContext';
+import { DURATION, tween } from '../../utils/motion';
 import { LoadMore } from '../Loading/LoadMore';
 import { formatTimeAgo } from '../../utils/formatDate';
 import { formatCount } from '../../utils/format';
 
 interface TriageInboxProps {
-    onSelectEmail: (email: Email) => void;
+    /** Opens a conversation, saying which list it was opened from (for previous / next). */
+    onSelectEmail: (email: Email, list?: ListKey) => void;
     /** A draft picked in Up next: reopen it where it was left. */
     onOpenDraft: (draft: DraftSummary) => void;
 }
@@ -29,11 +34,18 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
     const list = useThreadList(activeAccountId, { location: folders.inbox }, 500);
     const upNext = useUpNext(activeAccountId);
     const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
+    // While a card is dragged, the list holds still: a list that re-measured itself mid-drag (as
+    // the page redraws for a highlighted target) would nudge the dragged card off the pointer
+    const { isDragging } = useDragDrop();
+    // Cards that come, go or move under a still mouse check whether it's over them (utils/pointer.ts)
+    const listRef = useRef<HTMLDivElement>(null);
+    useEffect(() => (listRef.current ? watchForMoves(listRef.current, DURATION.slow * 1000 + 150) : undefined), []);
     // Up next and the Inbox appear together: one arriving after the other would push the page about.
     const ready = !list.loading && upNext.ready;
 
     // One card per conversation, newest first (the engine's order)
     const inboxEmails = useMemo(() => list.threads.map(cardFromThread), [list.threads]);
+    usePublishList('inbox', inboxEmails, { total: list.count, hasMore: list.hasMore, loadMore: list.loadMore });
     const arrivals = useArrivals(ready, inboxEmails);
     // A new account's first sync: nothing here yet while the account connects
     const firstSync = !list.loading && !list.error && inboxEmails.length === 0 && connection === 'connecting';
@@ -74,7 +86,7 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
         // Collapse the expanded card first
         setExpandedEmailId(null);
         // Then open the conversation view in App.tsx
-        onSelectEmail(email);
+        onSelectEmail(email, 'inbox');
     };
 
     // Segmentation Logic
@@ -105,41 +117,53 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
         }
     });
 
-    const renderSection = (title: string, items: Email[]) => {
-        if (items.length === 0) return null;
-        return (
-            <section>
-                <h3 className="text-muted" style={{
-                    fontSize: 'var(--font-size-sm)',
-                    fontWeight: 'var(--weight-semibold)',
-                    textTransform: 'var(--label-case)' as React.CSSProperties['textTransform'],
-                    letterSpacing: 'var(--label-tracking)',
-                    marginBottom: 'var(--space-md)'
-                }}>
-                    {title}
-                </h3>
-                <AnimatePresence mode="popLayout">
-                    {items.map((email) => (
-                        <InboxItem
-                            key={email.id}
-                            email={email}
-                            isExpanded={expandedEmailId === email.id}
-                            onBucket={handleBucket}
-                            onDone={handleDone}
-                            onClick={() => handleToggleExpand(email)}
-                            threadCount={email.threadCount}
-                            onViewThread={handleViewThread}
-                            hasDraft={draftThreadIds.has(email.threadId)}
-                            arrivals={arrivals}
-                        />
-                    ))}
-                </AnimatePresence>
-            </section>
-        );
-    };
+    // One list, headings and cards side by side (not a block per heading), so whatever leaves, a
+    // card or a heading whose last card went, fades where it is while everything below slides up
+    // as one, at 200ms: as in buckets (motion-audit.md, L8)
+    const sections: [string, Email[]][] = [
+        ['Today', segments.today], ['Yesterday', segments.yesterday], ['Past Week', segments.pastWeek],
+        ['Last Week', segments.lastWeek], ['Earlier', segments.earlier],
+    ];
+    const listItems = sections.flatMap(([title, items]) => (items.length === 0 ? [] : [
+        <motion.h3
+            key={`heading:${title}`}
+            layout={isDragging ? false : 'position'}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={tween(DURATION.mid)}
+            className="text-muted"
+            style={{
+                fontSize: 'var(--font-size-sm)',
+                fontWeight: 'var(--weight-semibold)',
+                textTransform: 'var(--label-case)' as React.CSSProperties['textTransform'],
+                letterSpacing: 'var(--label-tracking)',
+                margin: 'var(--space-lg) 0 var(--space-md)'
+            }}
+        >
+            {title}
+        </motion.h3>,
+        // Each card in a wrapper the list moves: it slides up into a gap and, leaving, fades and
+        // shrinks a little where it is, as in buckets (framer moves only the list's own children)
+        ...items.map(email => (
+            <motion.div key={email.id} layout={isDragging ? false : 'position'} exit={{ opacity: 0, scale: 0.97 }} transition={tween(DURATION.mid)}>
+            <InboxItem
+                email={email}
+                isExpanded={expandedEmailId === email.id}
+                onBucket={handleBucket}
+                onDone={handleDone}
+                onClick={() => handleToggleExpand(email)}
+                threadCount={email.threadCount}
+                onViewThread={handleViewThread}
+                hasDraft={draftThreadIds.has(email.threadId)}
+                arrivals={arrivals}
+            />
+            </motion.div>
+        )),
+    ]));
 
     return (
-        <div style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-xl)', paddingBottom: '140px' }}>
+        <div ref={listRef} style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-xl)', paddingBottom: '140px' }}>
             {!ready ? (
                 // Waiting for both: blank, then (if the wait is noticeable) the heading and card skeletons
                 <div aria-busy="true">
@@ -173,11 +197,13 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-                {renderSection('Today', segments.today)}
-                {renderSection('Yesterday', segments.yesterday)}
-                {renderSection('Past Week', segments.pastWeek)}
-                {renderSection('Last Week', segments.lastWeek)}
-                {renderSection('Earlier', segments.earlier)}
+                {/* Each heading's top margin is the gap between headings (the first one's is taken back
+                    here); a column, so a card's margin and the next heading's add up as before */}
+                <div style={{ marginTop: 'calc(-1 * var(--space-lg))', display: 'flex', flexDirection: 'column' }}>
+                    <AnimatePresence mode="popLayout" initial={false}>
+                        {listItems}
+                    </AnimatePresence>
+                </div>
 
                 <LoadMore list={list} skeletons={[0, 1, 2].map(i => <InboxCardSkeleton key={i} />)} />
 

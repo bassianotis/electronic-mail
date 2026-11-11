@@ -29,6 +29,8 @@ export interface Email {
     /** 'Sent' for a message you sent, or a conversation holding only mail you sent. */
     mailbox?: 'Sent';
     attachments?: Attachment[];
+    /** Inside a conversation: the message this one answers, when it's in the conversation. */
+    parentKey?: string | null;
 }
 
 export interface EmailAddress {

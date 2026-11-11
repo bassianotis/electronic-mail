@@ -36,14 +36,14 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
             if (typeof ref === 'function') ref(el);
             else if (ref) ref.current = el;
         };
-        const look = useDragLook(cardRef);
+        const look = useDragLook(cardRef, 0.6);
         const [showSenderEmail, setShowSenderEmail] = React.useState(false);
-        const [isDropped, setIsDropped] = React.useState(false);
         const enters = useEntrance(arrivals, email.id);
 
         const handleDragStart = () => {
             isDraggingRef.current = true;
             setIsDragging(true);
+            look.start();
         };
 
         const handleDrag = (_event: unknown, info: PanInfo) => {
@@ -62,6 +62,7 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                 ) {
                     foundBucketId = 'archive';
                     setHoveredBucketId(foundBucketId);
+                    look.aim(foundBucketId);
                     return;
                 }
             }
@@ -78,6 +79,7 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                 ) {
                     foundBucketId = 'inbox';
                     setHoveredBucketId(foundBucketId);
+                    look.aim(foundBucketId);
                     return;
                 }
             }
@@ -100,6 +102,7 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                 }
             }
             setHoveredBucketId(foundBucketId);
+            look.aim(foundBucketId);
         };
 
         const handleDragEnd = (_event: unknown, info: PanInfo) => {
@@ -121,10 +124,7 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                     dropPoint.y <= rect.bottom
                 ) {
                     // Archive the email (handled by BucketGallery)
-                    void look.land('archive', () => {
-                        setIsDropped(true); // Hide immediately
-                        onBucket(email.id, 'archive');
-                    });
+                    void look.land('archive', () => onBucket(email.id, 'archive'));
                     setTimeout(() => {
                         isDraggingRef.current = false;
                     }, 100);
@@ -167,11 +167,7 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
             }
 
             const to = droppedBucketId;
-            void look.land(to, () => {
-                if (!to) return;
-                setIsDropped(true); // Hide immediately
-                onBucket(email.id, to);
-            });
+            void look.land(to, () => { if (to) onBucket(email.id, to); });
 
             setTimeout(() => {
                 isDraggingRef.current = false;
@@ -192,7 +188,6 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                 onPointerDownCapture={look.grab}
                 className={`em-card${isThread ? ` thread-stack${threadCount === 2 ? ' thread-stack-pair' : ''}` : ''}`}
                 drag={!offline}
-                dragSnapToOrigin
                 dragElastic={0.1}
                 dragMomentum={false}
                 onDragStart={handleDragStart}
@@ -201,17 +196,10 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                 layout
                 initial={enters ? { opacity: 0, scale: 0.95 } : false}
                 onUpdate={noNativeAnimation}
-                animate={{ opacity: isDropped ? 0 : 1, scale: isDropped ? 0.95 : 1 }}
+                animate={look.animate({ opacity: 1, scale: 1 })}
                 exit={{ opacity: 0, scale: 0.97, transition: tween(DURATION.mid) }}
-                transition={tween(isDropped ? DURATION.fast : DURATION.mid)}
-                whileDrag={look.whileDrag({
-                    scale: 0.6,
-                    opacity: 0.9,
-                    borderRadius: 'var(--radius-lg)',
-                    zIndex: 9999,
-                    boxShadow: 'var(--shadow-floating)',
-                    cursor: 'grabbing'
-                })}
+                transition={tween(DURATION.mid)}
+                whileDrag={look.whileDrag}
                 onClick={handleClick}
                 style={{
                     backgroundColor: 'var(--surface-card)',
@@ -224,8 +212,11 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                     gap: 'var(--space-sm)',
                     height: '100%',
                     minWidth: 0, // a grid cell: long text can't widen its column
-                    position: 'relative', // Needed for z-index during drag
-                    transformOrigin: look.origin
+                    position: 'relative', // for its z-index while away from its slot
+                    transformOrigin: look.origin,
+                    x: look.x,
+                    y: look.y,
+                    zIndex: look.raised ? 9999 : undefined
                 }}
             >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)', fontSize: 'var(--size-sender-line)', color: 'var(--color-text-muted)' }}>

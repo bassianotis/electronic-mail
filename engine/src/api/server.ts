@@ -549,7 +549,7 @@ export function createApiServer(ctx: ApiContext): http.Server {
 
     // A draft's fields as the composer sends them (saving it, or moving it to another account).
     type DraftBody = { to?: unknown; cc?: unknown; bcc?: unknown; subject?: unknown; html?: unknown; text?: unknown;
-        replyTo?: unknown; inReplyTo?: unknown; references?: unknown; attachments?: unknown; replaces?: unknown; originalAccount?: unknown; toAccount?: unknown };
+        replyTo?: unknown; inReplyTo?: unknown; references?: unknown; attachments?: unknown; replaces?: unknown; originalAccount?: unknown; toAccount?: unknown; forwardOf?: unknown };
     const draftInput = (body: DraftBody) => ({
         to: addresses(body.to, 'to'), cc: addresses(body.cc, 'cc'), bcc: addresses(body.bcc, 'bcc'),
         subject: typeof body.subject === 'string' ? body.subject : '',
@@ -560,6 +560,7 @@ export function createApiServer(ctx: ApiContext): http.Server {
         attachments: stringList(body.attachments, 'attachments'),
         replaces: typeof body.replaces === 'string' ? body.replaces : null,
         originalAccount: typeof body.originalAccount === 'string' ? body.originalAccount : null,
+        forwardOf: typeof body.forwardOf === 'string' ? body.forwardOf : null,
     });
 
     route('PUT', '/api/v2/accounts/:account/drafts/:draft', async (req, res, p) => {

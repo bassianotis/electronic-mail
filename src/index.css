@@ -272,6 +272,15 @@
     --stack-near: #212123;
     --stack-far: #1d1d1f;
     --bucket-title: var(--color-text-main);
+
+    /* Reading view navigation (reading-navigation-spec.md, 2026-11-10) */
+    --stack-edge-bg: #2a2a2d;                    /* the older messages' edges behind the card */
+    --stack-edge-border: rgba(237, 237, 237, 0.16);
+    --tree-guide: rgba(237, 237, 237, 0.16);     /* the thread tree's guide lines */
+    --tree-current-bg: #2e2e31;                  /* the open message's row */
+    --tree-current-ring: rgba(237, 237, 237, 0.16);
+    --band-note-bg: #1d1d1f;                     /* "Not the message you're replying to" */
+    --tip-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 /* Up next's row scrolls without the browser's grey bar; a thin dark thumb shows while it's hovered.
@@ -488,8 +497,14 @@ button {
     cursor: default;
 }
 
+/* The reading layer (fixed, under the band's top) moves with the page, at the same pace */
+.reading-layer {
+    transition: top var(--dur-mid) var(--ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .below-server-banner {
+    .below-server-banner,
+    .reading-layer {
         transition: none;
     }
 }
@@ -744,3 +759,214 @@ button {
     cursor: pointer;
 }
 
+
+/* Reading view navigation (reading-navigation-spec.md, 2026-11-10). Base styles live here, not
+   inline, so the hover and pressed states below can change them. */
+.em-seg {
+    display: flex;
+    flex-shrink: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.em-seg button {
+    width: 32px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-main);
+    cursor: pointer;
+}
+
+.em-seg button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.em-seg .em-seg-divider {
+    width: 1px;
+    background: var(--border-strong);
+}
+
+.em-tree-toggle {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+
+.em-tree-row {
+    position: relative;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px 7px 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-main);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.em-tree-row:disabled {
+    cursor: default;
+}
+
+.em-reply-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 12px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-text-faint);
+    cursor: pointer;
+}
+
+.em-band-note {
+    height: 34px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 12px 0 24px;
+    background: var(--band-note-bg);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13px;
+    color: var(--color-text-muted);
+}
+
+.em-band-note button {
+    height: 26px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-text-main);
+    cursor: pointer;
+}
+
+.em-target-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 1;
+    min-width: 0;
+    height: 28px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--color-text-faint);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.em-conv-pill {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-raised);
+}
+
+.em-conv-pill button {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-main);
+    cursor: pointer;
+}
+
+.em-conv-pill button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.em-conv-pill .em-tip {
+    display: none;
+    position: absolute;
+    bottom: 44px;
+    width: max-content;
+    max-width: 320px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--surface-raised);
+    box-shadow: var(--tip-shadow);
+    font-size: 12.5px;
+    color: var(--message-text);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.em-conv-pill .em-tip i {
+    font-style: normal;
+    color: var(--color-text-faint);
+    margin-right: 6px;
+}
+
+/* Hover and pressed */
+.em-seg button:not(:disabled):hover,
+.em-tree-toggle:hover,
+.em-tree-toggle[aria-expanded="true"],
+.em-tree-row:not(:disabled):hover,
+.em-band-note button:hover,
+.em-conv-pill button:not(:disabled):hover,
+.em-target-link:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-main);
+}
+
+.em-tree-row[aria-current="true"],
+.em-tree-row[aria-current="true"]:hover {
+    background: var(--tree-current-bg);
+    box-shadow: inset 0 0 0 1px var(--tree-current-ring);
+}
+
+.em-reply-line:hover {
+    color: var(--color-text-main);
+    text-decoration: underline;
+    text-decoration-color: rgba(237, 237, 237, 0.4);
+    text-underline-offset: 3px;
+}
+
+.em-conv-pill button:not(:disabled):hover .em-tip,
+.em-conv-pill button:not(:disabled):focus-visible .em-tip {
+    display: block;
+}

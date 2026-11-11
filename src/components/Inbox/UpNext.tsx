@@ -12,10 +12,11 @@ import { useMail } from '../../context/MailContext';
 import { useComposer } from '../../context/ComposerContext';
 import { useDragDropActions } from '../../context/DragDropContext';
 import { cardFromThread } from '../../utils/emailMapper';
+import { usePublishList, type ListKey } from '../../hooks/conversationLists';
 import { formatListDate } from '../../utils/formatDate';
 import { dropTargetAt } from '../../utils/dropTargets';
 import { DraftBadge } from '../Views/DraftBadge';
-import { DURATION, noNativeAnimation, tween } from '../../utils/motion';
+import { noNativeAnimation } from '../../utils/motion';
 import { useDragLook } from '../../hooks/useDragLook';
 import type { DraftSummary } from '../../api/types';
 import type { UpNextDraft, UpNextItem, UpNextThread } from '../../hooks/useUpNext';
@@ -123,55 +124,49 @@ const ThreadCardItem: React.FC<{ item: UpNextThread; bucketIds: string[]; onOpen
     const offline = useServerUnreachable(); // filing waits for the server
     const slotRef = useRef<HTMLDivElement>(null);
     const dragged = useRef(false);
-    // While dragged, the card is held where it was with position: fixed, so the strip's scrolling
-    // box doesn't clip it on its way to the dock; its slot keeps the space.
-    const [lifted, setLifted] = useState<DOMRect | null>(null);
-    const [overTarget, setOverTarget] = useState(false);
     const t = item.thread;
-    const look = useDragLook(slotRef);
+    const look = useDragLook(slotRef, 0.4);
+    // While away from its slot (dragged, going home, fading where it was dropped), the card is held
+    // where it was with position: fixed, so the strip's scrolling box doesn't clip it on its way to
+    // the dock; its slot keeps the space.
+    const [slot, setSlot] = useState<DOMRect | null>(null);
+    const lifted = look.raised ? slot : null;
 
     return (
         <div ref={slotRef} style={slotStyle}>
             <motion.div
                 className={`upnext-card${t.messageCount > 1 ? ` thread-stack${t.messageCount === 2 ? ' thread-stack-pair' : ''}` : ''}`}
                 drag={!offline}
-                dragSnapToOrigin
                 dragElastic={0.1}
                 dragMomentum={false}
                 onPointerDownCapture={look.grab}
                 onDragStart={() => {
                     dragged.current = true;
-                    setLifted(slotRef.current?.getBoundingClientRect() ?? null);
+                    setSlot(slotRef.current?.getBoundingClientRect() ?? null);
                     setIsDragging(true);
+                    look.start();
                 }}
                 onDrag={(_e, info) => {
                     const to = dropTargetAt(info.point, bucketIds, true);
                     setHoveredBucketId(to);
-                    setOverTarget(to !== null);
+                    look.aim(to);
                 }}
                 onDragEnd={(_e, info) => {
                     setIsDragging(false);
                     setHoveredBucketId(null);
-                    setOverTarget(false);
                     const to = dropTargetAt(info.point, bucketIds, true);
                     void look.land(to, () => { if (to) onMove(to); });
                     setTimeout(() => { dragged.current = false; }, 100);
                 }}
-                onDragTransitionEnd={() => setLifted(null)}
                 onUpdate={noNativeAnimation}
-                whileDrag={look.whileDrag({
-                    scale: 0.4,
-                    opacity: overTarget ? 0.15 : 0.5,
-                    borderRadius: 'var(--radius-lg)',
-                    zIndex: 9999,
-                    boxShadow: 'var(--shadow-floating)',
-                    cursor: 'grabbing',
-                    transition: { opacity: tween(DURATION.fast) }
-                })}
+                whileDrag={look.whileDrag}
+                animate={look.animate({ opacity: 1, scale: 1 })}
                 style={{
                     ...cardStyle,
                     cursor: 'grab',
                     transformOrigin: look.origin,
+                    x: look.x,
+                    y: look.y,
                     ...(lifted ? { position: 'fixed', top: lifted.top, left: lifted.left, width: lifted.width, height: lifted.height, zIndex: 9999 } : {}),
                 }}
             >
@@ -229,7 +224,8 @@ const DraftCardItem: React.FC<{ item: UpNextDraft; me: string; recent: boolean; 
 
 interface UpNextProps {
     items: UpNextItem[];
-    onSelectEmail: (email: Email) => void;
+    /** Opens a conversation, saying which list it was opened from (for previous / next). */
+    onSelectEmail: (email: Email, list?: ListKey) => void;
     onOpenDraft: (draft: DraftSummary) => void;
 }
 
@@ -259,6 +255,10 @@ export const UpNext: React.FC<UpNextProps> = ({ items, onSelectEmail, onOpenDraf
         });
     };
 
+    // Its conversations, for previous / next (its drafts open the composer instead)
+    const conversations = useMemo(() => shown.flatMap(i => (i.kind === 'thread' ? [cardFromThread(i.thread)] : [])), [shown]);
+    usePublishList('upnext', conversations);
+
     if (!shown.length) return null;
 
     return (
@@ -282,7 +282,7 @@ export const UpNext: React.FC<UpNextProps> = ({ items, onSelectEmail, onOpenDraf
                         key={item.key}
                         item={item}
                         bucketIds={bucketIds}
-                        onOpen={() => onSelectEmail(cardFromThread(item.thread))}
+                        onOpen={() => onSelectEmail(cardFromThread(item.thread), 'upnext')}
                         onMove={to => void move(item, to)}
                     />
                 ) : (

@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { DURATION, tween } from '../utils/motion';
 import { AlertCircle, CheckCircle, X } from 'lucide-react';
 import { useMail } from '../context/MailContext';
 
@@ -31,6 +32,7 @@ export const ToastHost: React.FC = () => {
                         initial={{ opacity: 0, y: 50 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 20 }}
+                        transition={tween(DURATION.mid)} // notices: 200ms (utils/motion.ts)
                         role={toast.tone === 'error' ? 'alert' : 'status'}
                         style={{
                             backgroundColor: toast.tone === 'error' ? 'var(--toast-error-bg)' : 'var(--toast-bg)',

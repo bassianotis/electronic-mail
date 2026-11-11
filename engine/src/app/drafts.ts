@@ -13,6 +13,12 @@ import type { UploadInfo, Uploads } from './uploads.ts';
 export const DRAFT_HEADER = 'X-Electronic-Mail-Draft';
 /** On a reply written from another account: the account (here) holding the message it answers. */
 export const ORIGINAL_ACCOUNT_HEADER = 'X-Electronic-Mail-Original-Account';
+/**
+ * On a forward: the Message-ID of the message it forwards, so reopening the draft finds it again
+ * (a forward carries no In-Reply-To). Only on the draft; sending builds a new message without it.
+ */
+export const FORWARD_OF_HEADER = 'X-Electronic-Mail-Forward-Of';
+const MESSAGE_ID = /^<?([^\s<>]+)>?$/;
 const DRAFT_KEY = /^[A-Za-z0-9-]{8,64}$/;
 
 export interface DraftInput {
@@ -33,6 +39,8 @@ export interface DraftInput {
     replaces?: string | null;
     /** A reply's original is in this other account (so reopening it finds its conversation). */
     originalAccount?: string | null;
+    /** Message key of the message a forward forwards (saved as FORWARD_OF_HEADER). */
+    forwardOf?: string | null;
 }
 
 export interface DraftSummary {
@@ -60,6 +68,8 @@ export interface DraftContent {
     attachments: UploadInfo[];
     /** For a reply written from another account: the account holding the message it answers. */
     originalAccount: string | null;
+    /** For a forward: the Message-ID (without <>) of the message it forwards. */
+    forwardOf: string | null;
 }
 
 export class Drafts {
@@ -89,11 +99,16 @@ export class Drafts {
         if (!DRAFT_KEY.test(draftKey)) throw new ComposeError('invalid draft key');
         const folder = this.draftsFolder(accountId);
         const threading = input.replyTo ? threadingFor(this.store, accountId, input.replyTo) : threadingFromHeaders(input.inReplyTo, input.references);
+        const forwarded = !input.replyTo && input.forwardOf ? this.messageIdOf(accountId, input.forwardOf) : null;
         const built = await buildMessage({
             from, to: input.to, cc: input.cc, bcc: input.bcc, subject: input.subject, html: input.html, text: input.text,
             attachments: input.attachments.map(id => this.uploads.load(id)),
             inReplyTo: threading?.inReplyTo, references: threading?.references,
-            headers: { [DRAFT_HEADER]: draftKey, ...(input.originalAccount && DRAFT_KEY.test(input.originalAccount) ? { [ORIGINAL_ACCOUNT_HEADER]: input.originalAccount } : {}) },
+            headers: {
+                [DRAFT_HEADER]: draftKey,
+                ...(input.originalAccount && DRAFT_KEY.test(input.originalAccount) ? { [ORIGINAL_ACCOUNT_HEADER]: input.originalAccount } : {}),
+                ...(forwarded ? { [FORWARD_OF_HEADER]: `<${forwarded}>` } : {}),
+            },
             allowNoRecipients: true,
         });
         const replacedUids = input.replaces ? this.uidsOf(accountId, folder, input.replaces) : [];
@@ -125,6 +140,7 @@ export class Drafts {
         const parsed = await simpleParser(source);
         const key = parsed.headers.get(DRAFT_HEADER.toLowerCase());
         const originalAccount = parsed.headers.get(ORIGINAL_ACCOUNT_HEADER.toLowerCase());
+        const forwardOf = parsed.headers.get(FORWARD_OF_HEADER.toLowerCase());
         const refs = parsed.references;
         return {
             msgKey,
@@ -140,7 +156,18 @@ export class Drafts {
             attachments: parsed.attachments.filter(a => !a.related)
                 .map(a => this.uploads.saveBuffer(a.content, a.filename ?? 'attachment', a.contentType)),
             originalAccount: typeof originalAccount === 'string' && DRAFT_KEY.test(originalAccount) ? originalAccount : null,
+            forwardOf: typeof forwardOf === 'string' ? MESSAGE_ID.exec(forwardOf.trim())?.[1] ?? null : null,
         };
+    }
+
+    /**
+     * A message's Message-ID (without <>), if the cache knows it and it's safe to put in a header.
+     * This account's copy first; a draft moved to another account (From changed) still finds it.
+     */
+    private messageIdOf(accountId: string, msgKey: string): string | null {
+        const row = this.store.db.prepare('SELECT message_id FROM message WHERE msg_key = ? ORDER BY account = ? DESC LIMIT 1').get(msgKey, accountId) as { message_id: string | null } | undefined;
+        const id = row?.message_id ? MESSAGE_ID.exec(row.message_id.trim())?.[1] : null;
+        return id ?? null;
     }
 
     /**

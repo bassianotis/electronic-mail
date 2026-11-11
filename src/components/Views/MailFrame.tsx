@@ -13,7 +13,7 @@
  * inside the frame from the paper tokens; other mail takes the theme's text colours. Reader is in a
  * frame too, with its own type, so the same policy keeps outside content out of it.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { IMAGE_ICON, type PlaceholderLook } from '../../utils/remoteImages';
 
 interface MailFrameProps {
@@ -31,7 +31,14 @@ interface MailFrameProps {
     onSheetLeft?: (left: number) => void;
     /** The email's own @font-face rules (Original only: utils/mailLook.ts, fontFaces). */
     fonts?: string;
+    /** Its height until the body reports its own (the message before's, so stepping doesn't jump). */
+    startHeight?: number;
+    /** Hears the body's height each time it reports it. */
+    onHeight?: (height: number) => void;
 }
+
+/** A frame narrower than this hasn't been laid out yet: its sizes are ignored (MailFrame). */
+const MIN_LAID_OUT_WIDTH = 40;
 
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
@@ -121,9 +128,11 @@ ${fonts}
 </body></html>`;
 }
 
-export const MailFrame: React.FC<MailFrameProps> = ({ html, look, imagesAllowed, fontSize, minHeight = 0, onImagesSettled, onSheetLeft, fonts = '' }) => {
+export const MailFrame: React.FC<MailFrameProps> = ({ html, look, imagesAllowed, fontSize, minHeight = 0, onImagesSettled, onSheetLeft, fonts = '', startHeight, onHeight }) => {
     const frame = useRef<HTMLIFrameElement>(null);
-    const [height, setHeight] = useState(Math.max(minHeight, 80));
+    const [height, setHeight] = useState(() => Math.max(minHeight, startHeight ?? 0, 80));
+    const heard = useRef(onHeight);
+    useEffect(() => { heard.current = onHeight; }, [onHeight]);
     const settled = useRef(onImagesSettled);
     useEffect(() => { settled.current = onImagesSettled; }, [onImagesSettled]);
     const sheetLeft = useRef(onSheetLeft);
@@ -131,14 +140,28 @@ export const MailFrame: React.FC<MailFrameProps> = ({ html, look, imagesAllowed,
 
     const srcDoc = useMemo(() => frameDocument(html, { look, imagesAllowed, fontSize, fonts }), [html, look, imagesAllowed, fontSize, fonts]);
 
-    useEffect(() => {
+    // Listening from the moment the frame is in the page (a layout effect, not one after paint): a
+    // frame that loads quickly, drawn out of sight ahead, could otherwise say its size to no one
+    useLayoutEffect(() => {
         const onMessage = (e: MessageEvent) => {
             if (!frame.current || e.source !== frame.current.contentWindow) return;
-            const m = e.data as { em?: string; type?: string; height?: number; left?: number; failed?: number; key?: string } | null;
+            const m = e.data as { em?: string; type?: string; height?: number; left?: number; width?: number; failed?: number; key?: string; dx?: number; dy?: number; mode?: number; at?: number } | null;
             if (!m || m.em !== 'mail-frame') return;
-            if (m.type === 'size' && typeof m.height === 'number') {
-                setHeight(Math.max(m.height, minHeight));
+            // A size measured before the frame was laid out is no size: without its width yet (every
+            // word on a line of its own, tens of thousands of pixels), or before its text was (0).
+            // The next one, a moment later, is the real one.
+            if (m.type === 'size' && typeof m.height === 'number' && m.height > 0 && (m.width ?? 0) >= MIN_LAID_OUT_WIDTH) {
+                const next = Math.max(m.height, minHeight);
+                setHeight(next);
+                heard.current?.(next);
                 if (typeof m.left === 'number') sheetLeft.current?.(m.left);
+            }
+            else if (m.type === 'wheel') {
+                // Scrolling over the body: the conversation hears it as if over the frame itself, stamped
+                // when it happened. It's only heard: the browser has already scrolled for it.
+                const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaX: m.dx ?? 0, deltaY: m.dy ?? 0, deltaMode: m.mode ?? 0 });
+                if (typeof m.at === 'number') Object.defineProperty(wheel, 'emTime', { value: m.at - performance.timeOrigin });
+                frame.current.dispatchEvent(wheel);
             }
             else if (m.type === 'images') settled.current?.(typeof m.failed === 'number' ? m.failed : 0);
             else if (m.type === 'key' && typeof m.key === 'string') window.dispatchEvent(new KeyboardEvent('keydown', { key: m.key }));
@@ -155,6 +178,8 @@ export const MailFrame: React.FC<MailFrameProps> = ({ html, look, imagesAllowed,
             sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
             referrerPolicy="no-referrer"
             srcDoc={srcDoc}
+            // Loaded: asked for its size once more, in case it was said before anyone listened
+            onLoad={() => frame.current?.contentWindow?.postMessage('em-measure', '*')}
             style={{ display: 'block', width: '100%', height: `${height}px`, border: 0, background: 'transparent', colorScheme: 'dark' }}
         />
     );
