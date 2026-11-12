@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { Search, Settings, PenSquare } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+import { Search, Settings, PenSquare, ChevronRight } from 'lucide-react';
 import { useDragDrop } from '../../context/DragDropContext';
 import { useMail } from '../../context/MailContext';
-import { useConnection } from '../../api/events';
-import { SettingsModal } from '../Rules/SettingsModal';
+import { useConnection, useStatuses } from '../../api/events';
+import { SettingsDialog } from '../Settings/SettingsDialog';
+import { clockTime, lastSection, type SettingsTarget } from '../Settings/useSettings';
+import { tabLabel } from '../../utils/accountLabel';
+import '../Settings/settings.css';
 
 interface TopNavbarProps {
     onSearchClick: () => void;
@@ -13,13 +17,17 @@ interface TopNavbarProps {
 
 export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate, onComposeClick }) => {
     const { hoveredBucketId } = useDragDrop();
-    const { activeAccountId, activeAccount } = useMail();
+    const { activeAccountId, activeAccount, accounts } = useMail();
     const connection = useConnection(activeAccountId) ?? activeAccount?.state;
-    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-    // Shown only when something is wrong: mail on screen may be out of date until it reconnects.
-    const connectionNote = connection === 'offline' ? 'Offline: showing saved mail'
-        : connection === 'auth-failed' ? 'Password rejected: update it in Settings'
-        : null;
+    // Settings: where it opens (the gear: the last section used; the pill: that account's password)
+    const [settings, setSettings] = useState<(SettingsTarget & { n: number }) | null>(null);
+    const openSettings = (at: SettingsTarget) => setSettings(prev => ({ ...at, n: (prev?.n ?? 0) + 1 }));
+    // A rejected password is one pill for every account, and a button (settings-spec.md §9)
+    const statuses = useStatuses(accounts);
+    const rejected = accounts.filter(a => statuses.get(a.id)?.state === 'auth-failed');
+    const pill = passwordPill(rejected, activeAccountId, accounts, statuses);
+    // Otherwise shown only when something is wrong: mail on screen may be out of date until it reconnects.
+    const connectionNote = !pill && connection === 'offline' ? 'Offline: showing saved mail' : null;
     const isHovered = hoveredBucketId === 'inbox';
 
     return (
@@ -58,9 +66,16 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                     Electronic Mail
                 </button>
 
+                {pill && (
+                    <button type="button" className="st-pill" title={pill.title} aria-label={pill.title}
+                        onClick={() => openSettings(pill.opens)}>
+                        {pill.text}
+                        <ChevronRight size={12} aria-hidden="true" />
+                    </button>
+                )}
+
                 {connectionNote && (
                     <span
-                        title={activeAccount?.error ?? undefined}
                         style={{
                             fontSize: 'var(--font-size-xs)',
                             color: 'var(--note-warn-text)',
@@ -148,7 +163,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                 {/* Settings Button */}
                 <button
                     aria-label="Settings"
-                    onClick={() => setIsSettingsModalOpen(true)}
+                    onClick={() => openSettings({ section: lastSection(), accountId: activeAccountId })}
                     style={{
                         padding: 'var(--space-sm)',
                         color: 'var(--color-text-muted)',
@@ -167,10 +182,35 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                 </button>
             </div>
 
-            <SettingsModal
-                isOpen={isSettingsModalOpen}
-                onClose={() => setIsSettingsModalOpen(false)}
-            />
+            <AnimatePresence>
+                {settings && <SettingsDialog key={settings.n} at={settings} onClose={() => setSettings(null)} />}
+            </AnimatePresence>
         </header>
     );
 };
+
+type Named = { id: string; email: string; tabName: string | null };
+
+/**
+ * The pill's words, its name and where it opens: "Password rejected · Update" for the open account,
+ * "Work: password rejected · Update" for another, "2 accounts: password rejected · Update" (Accounts).
+ */
+function passwordPill(rejected: Named[], openId: string | null, all: Named[], statuses: Map<string, { rejectedAt: string | null }>): { text: string; title: string; opens: SettingsTarget } | null {
+    if (!rejected.length) return null;
+    if (rejected.length > 1) {
+        const names = rejected.map(a => tabLabel(a, all));
+        return {
+            text: `${rejected.length} accounts: password rejected · Update`,
+            title: `The mail server rejected the passwords for ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`,
+            opens: { section: 'accounts' },
+        };
+    }
+    const [account] = rejected;
+    const name = tabLabel(account, all);
+    const at = clockTime(statuses.get(account.id)?.rejectedAt ?? null);
+    return {
+        text: account.id === openId ? 'Password rejected · Update' : `${name}: password rejected · Update`,
+        title: `The mail server rejected ${name}\u2019s password${at ? ` at ${at}` : ''}`,
+        opens: { section: 'password', accountId: account.id },
+    };
+}

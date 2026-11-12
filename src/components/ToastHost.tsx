@@ -14,7 +14,8 @@ export const ToastHost: React.FC = () => {
     return (
         <div style={{
             position: 'fixed',
-            bottom: '120px',
+            // Above the dock; while Settings is open, just above its bottom edge (SettingsDialog sets it)
+            bottom: 'var(--notice-bottom, 120px)',
             left: '50%',
             transform: 'translateX(-50%)',
             display: 'flex',

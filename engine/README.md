@@ -40,7 +40,8 @@ In development the screens (`../src`) reach the engine through Vite's `/api` pro
   - the built-in login: `auth/status`, `auth/login`, `auth/setup` (first run), `auth/logout`, `auth/logout-all`;
   - the Bassapps sign-in: `auth/begin`, `auth/callback`.
 - **Accounts:**
-  - `accounts` (list, add), `accounts/test`, `accounts/:id` (change, remove), `accounts/:id/settings`;
+  - `accounts` (list, add), `accounts/test`, `accounts/discover` (an address's servers, found without logging in), `account-order`;
+  - `accounts/:id` (change, remove; a new incoming or sending server or password is tried first, and a new incoming one starts the account again), `accounts/:id/settings`;
   - `settings/export`, `settings/import`.
 - **Mail** (each under `accounts/:id`):
   - `home`, `folders`, `threads?location=…` (or `view=sent`), `threads/:thread`, `search?q=`;

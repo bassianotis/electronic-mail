@@ -1,5 +1,5 @@
 /**
- * MailContext: the active account, its buckets, rules and folders, and the actions that change
+ * MailContext: the active account, its buckets and folders, and the actions that change
  * mail. Everything shown comes from the engine and is fetched again whenever the account's
  * state token changes (api/events.ts); nothing is counted or patched by hand here, so the
  * numbers on screen are always the engine's (docs/architecture.md, rule 2).
@@ -8,9 +8,9 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { api, acct, ApiError, downloadFile, errorText, paths, SESSION_RESTORED_EVENT } from '../api/client';
 import { engineEvents, useAccountState } from '../api/events';
 import { cancelMoving, markMoving, settleMoving } from '../api/moving';
-import type { Account, BucketView, DraftSummary, FolderInfo, OutboxItem, RuleView, SweepNotice } from '../api/types';
-import type { Bucket, Rule } from '../store/mailStore';
-import { bucketFromView, ruleFromView } from '../utils/emailMapper';
+import type { Account, BucketView, DraftSummary, FolderInfo, OutboxItem, SweepNotice } from '../api/types';
+import type { Bucket } from '../store/mailStore';
+import { bucketFromView } from '../utils/emailMapper';
 import { formatCount } from '../utils/format';
 
 export interface ToastAction {
@@ -70,12 +70,9 @@ interface MailContextType {
     setActiveAccountId: (id: string) => void;
     /** Loads the account list again; resolves to whether it loaded. */
     fetchAccounts: () => Promise<boolean>;
-    isAddingAccount: boolean;
-    setIsAddingAccount: (value: boolean) => void;
 
     folders: Folders;
     buckets: Bucket[];
-    rules: Rule[];
     /** Conversations that have a reply draft waiting (the Draft badge). */
     draftThreadIds: Set<string>;
     drafts: DraftSummary[];
@@ -84,8 +81,6 @@ interface MailContextType {
     updateBucket: (id: string, updates: Partial<Bucket>) => Promise<void>;
     deleteBucket: (id: string) => Promise<void>;
     reorderBuckets: (bucketIds: string[]) => Promise<void>;
-    addRule: (senderPattern: string, bucketId: string) => Promise<void>;
-    deleteRule: (id: string) => Promise<void>;
 
     /** Moves a whole conversation to 'inbox', 'archive' or a bucket id. Resolves to the task id (for undo). */
     moveThread: (threadId: string, target: string) => Promise<number | null>;
@@ -128,10 +123,8 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [activeAccountId, setActiveAccountIdState] = useState<string | null>(() => {
         try { return localStorage.getItem(ACTIVE_KEY); } catch { return null; }
     });
-    const [isAddingAccount, setIsAddingAccount] = useState(false);
     const [folders, setFolders] = useState<Folders>(NO_FOLDERS);
     const [bucketViews, setBucketViews] = useState<BucketView[]>([]);
-    const [ruleViews, setRuleViews] = useState<RuleView[]>([]);
     const [drafts, setDrafts] = useState<DraftSummary[]>([]);
     const [toasts, setToasts] = useState<Toast[]>([]);
     const toastSeq = useRef(0);
@@ -214,23 +207,12 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (d.status === 'fulfilled') setDrafts(d.value.drafts);
     }, []);
 
-    const loadRules = useCallback(async (accountId: string) => {
-        try {
-            const { rules } = await api.get<{ rules: RuleView[] }>(`${acct(accountId)}/rules`);
-            if (openAccount.current === accountId) setRuleViews(rules);
-        } catch (err) {
-            console.error('Failed to fetch rules:', err);
-        }
-    }, []);
-
     useEffect(() => {
         openAccount.current = activeAccountId;
         setFolders(NO_FOLDERS);
         setBucketViews([]);
-        setRuleViews([]);
         setDrafts([]);
-        if (activeAccountId) void loadRules(activeAccountId);
-    }, [activeAccountId, loadRules]);
+    }, [activeAccountId]);
 
     useEffect(() => {
         if (activeAccountId) void loadAccountData(activeAccountId);
@@ -238,8 +220,8 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const refreshData = useCallback(async () => {
         await fetchAccounts();
-        if (activeAccountId) await Promise.all([loadAccountData(activeAccountId), loadRules(activeAccountId)]);
-    }, [fetchAccounts, activeAccountId, loadAccountData, loadRules]);
+        if (activeAccountId) await loadAccountData(activeAccountId);
+    }, [fetchAccounts, activeAccountId, loadAccountData]);
 
     // Logged in again after the session ended: whatever failed to load meanwhile loads again.
     useEffect(() => {
@@ -249,7 +231,6 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [refreshData]);
 
     const buckets = useMemo(() => bucketViews.map(bucketFromView), [bucketViews]);
-    const rules = useMemo(() => ruleViews.map(r => ruleFromView(r, buckets)), [ruleViews, buckets]);
     const draftThreadIds = useMemo(() => new Set(drafts.map(d => d.threadId).filter((t): t is string => !!t)), [drafts]);
     const activeAccount = accounts.find(a => a.id === activeAccountId) ?? null;
 
@@ -340,11 +321,11 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (updates.autoArchiveDays !== undefined) body.autoArchiveDays = updates.autoArchiveDays;
         try {
             await api.patch(paths.bucket(activeAccountId, bucket.label), body);
-            await Promise.all([loadAccountData(activeAccountId), loadRules(activeAccountId)]);
+            await loadAccountData(activeAccountId);
         } catch (err) {
             showToast({ message: `Couldn't change the bucket: ${errorText(err)}`, tone: 'error' });
         }
-    }, [activeAccountId, buckets, loadAccountData, loadRules, showToast]);
+    }, [activeAccountId, buckets, loadAccountData, showToast]);
 
     // After a bucket's auto-archive swept (feature batch 1), once: "Archived 14 older threads from
     // Reads", with Undo for the whole batch (none once it's over 7 days old).
@@ -380,12 +361,12 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (!activeAccountId || !bucket) return;
         try {
             const r = await api.del<{ movedToArchive: number }>(paths.bucket(activeAccountId, bucket.label));
-            await Promise.all([loadAccountData(activeAccountId), loadRules(activeAccountId)]);
+            await loadAccountData(activeAccountId);
             showToast({ message: r.movedToArchive ? `Deleted ${bucket.label}; its mail is in the Archive.` : `Deleted ${bucket.label}.` });
         } catch (err) {
             showToast({ message: `Couldn't delete the bucket: ${errorText(err)}`, tone: 'error' });
         }
-    }, [activeAccountId, buckets, loadAccountData, loadRules, showToast]);
+    }, [activeAccountId, buckets, loadAccountData, showToast]);
 
     const reorderBuckets = useCallback(async (bucketIds: string[]) => {
         if (!activeAccountId) return;
@@ -400,27 +381,6 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             await loadAccountData(activeAccountId);
         }
     }, [activeAccountId, buckets, loadAccountData, showToast]);
-
-    const addRule = useCallback(async (senderPattern: string, bucketId: string) => {
-        const bucket = buckets.find(b => b.id === bucketId);
-        if (!activeAccountId || !bucket) return;
-        try {
-            await api.post(`${acct(activeAccountId)}/rules`, { senderPattern, bucket: bucket.label });
-            await loadRules(activeAccountId);
-        } catch (err) {
-            showToast({ message: `Couldn't add the rule: ${errorText(err)}`, tone: 'error' });
-        }
-    }, [activeAccountId, buckets, loadRules, showToast]);
-
-    const deleteRule = useCallback(async (id: string) => {
-        if (!activeAccountId) return;
-        try {
-            await api.del(`${acct(activeAccountId)}/rules/${encodeURIComponent(id)}`);
-            await loadRules(activeAccountId);
-        } catch (err) {
-            showToast({ message: `Couldn't delete the rule: ${errorText(err)}`, tone: 'error' });
-        }
-    }, [activeAccountId, loadRules, showToast]);
 
     // ---- sending (docs/architecture.md, rule 9: never silent)
     const subjects = useRef(new Map<string, string>());
@@ -505,9 +465,8 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const value: MailContextType = {
         accounts, accountsLoaded, accountsFailing, activeAccountId, activeAccount, setActiveAccountId, fetchAccounts,
-        isAddingAccount, setIsAddingAccount,
-        folders, buckets, rules, draftThreadIds, drafts,
-        addBucket, updateBucket, deleteBucket, reorderBuckets, addRule, deleteRule,
+        folders, buckets, draftThreadIds, drafts,
+        addBucket, updateBucket, deleteBucket, reorderBuckets,
         moveThread, undoMove, markThreadSeen, folderLabel, targetPath, viewOf,
         send,
         toasts, showToast, dismissToast,

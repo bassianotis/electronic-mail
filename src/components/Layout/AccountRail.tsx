@@ -11,12 +11,11 @@ import { useComposer } from '../../context/ComposerContext';
 import { api } from '../../api/client';
 import { signInAgain, useFamily } from '../../api/family';
 import { AppsMenu } from '../../shared/AppsMenu';
+import { tabLabel } from '../../utils/accountLabel';
 
 export const RAIL_WIDTH = 48;
 /** How long the tabs take to move (the transitions on .account-tab in index.css). */
 const TAB_MS = 150;
-
-const localPart = (email: string) => email.split('@')[0].toLowerCase();
 
 export const AccountRail: React.FC = () => {
     const { accounts, activeAccountId, setActiveAccountId } = useMail();
@@ -45,14 +44,6 @@ export const AccountRail: React.FC = () => {
             setActiveAccountId(id);
             setPending(null);
         }, reduced ? 0 : TAB_MS);
-    };
-
-    // The tab name set in Settings; else the part before the @, unless two such accounts share it:
-    // then the whole address for those two.
-    const labelOf = (account: { email: string; tabName: string | null }) => {
-        if (account.tabName) return account.tabName;
-        const shared = accounts.filter(a => !a.tabName && localPart(a.email) === localPart(account.email)).length > 1;
-        return shared ? account.email : account.email.split('@')[0];
     };
 
     const moveFocus = (e: React.KeyboardEvent, from: number) => {
@@ -117,7 +108,7 @@ export const AccountRail: React.FC = () => {
                             onClick={() => open(account.id)}
                             onKeyDown={e => moveFocus(e, i)}
                         >
-                            {labelOf(account)}
+                            {tabLabel(account, accounts)}
                         </button>
                     );
                 })}

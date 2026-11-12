@@ -12,12 +12,25 @@ import type { Rules } from './rules.ts';
 import type { Buckets } from './buckets.ts';
 import type { AccountConfig } from '../types.ts';
 
+/** One server's test: `refused` when it was the username or password (not the network). */
+export interface ServerCheck { ok: boolean; error?: string; refused?: boolean }
+
 export interface ConnectionCheck {
-    imap: { ok: boolean; error?: string };
-    smtp: { ok: boolean; error?: string } | null;
+    imap: ServerCheck;
+    smtp: ServerCheck | null;
 }
 
-export class AccountError extends Error {}
+/** A server's details as changed in Settings; no password keeps the saved one. */
+export interface ServerChange { host: string; port: number; secure: boolean; user: string; pass?: string }
+
+export class AccountError extends Error {
+    /** Which server failed its test, and whether it refused the password: the screens put it by that field. */
+    readonly reason?: 'imap-refused' | 'imap' | 'smtp-refused' | 'smtp';
+    constructor(message: string, reason?: AccountError['reason']) {
+        super(message);
+        this.reason = reason;
+    }
+}
 
 export interface ManagerOptions {
     store: Store;
@@ -56,8 +69,8 @@ export class AccountManager extends EventEmitter {
             throw new AccountError(`${input.email} is already set up`);
         }
         const check = await testConnection(input);
-        if (!check.imap.ok) throw new AccountError(`Incoming mail (IMAP): ${check.imap.error}`);
-        if (check.smtp && !check.smtp.ok) throw new AccountError(`Outgoing mail (SMTP): ${check.smtp.error}`);
+        if (!check.imap.ok) throw new AccountError(`Incoming mail (IMAP): ${check.imap.error}`, check.imap.refused ? 'imap-refused' : 'imap');
+        if (check.smtp && !check.smtp.ok) throw new AccountError(`Outgoing mail (SMTP): ${check.smtp.error}`, check.smtp.refused ? 'smtp-refused' : 'smtp');
         const created = accounts.create({ ...input, email: input.email.trim() });
         const config = accounts.imapConfigs().find(c => c.id === created.id)!;
         this.startWorker(config);
@@ -79,6 +92,52 @@ export class AccountManager extends EventEmitter {
         this.o.store.forgetAccount(id);
         accounts.remove(id);
         this.emit('accounts', { removed: id });
+    }
+
+    /**
+     * Changes where an account connects, or its passwords (settings-audit.md, section 3). Each server
+     * given is tested first, and one refusal saves nothing. A changed incoming server or password
+     * starts the account again with it, so a refused account is back online at once.
+     */
+    async changeConnection(id: string, changes: { imap?: ServerChange; smtp?: ServerChange | null }): Promise<AccountSummary> {
+        const accounts = this.requireAccounts();
+        if (!accounts.get(id)) throw new AccountError('unknown account');
+        const imap = changes.imap && { ...changes.imap, pass: changes.imap.pass || accounts.imapConfig(id)!.pass };
+        const smtp = changes.smtp && { ...changes.smtp, pass: changes.smtp.pass || accounts.smtpConfig(id)?.pass || '' };
+        if (smtp && !smtp.pass) throw new AccountError('Outgoing mail (SMTP): a password is required', 'smtp');
+        if (imap) {
+            const check = await testConnection({ imap });
+            if (!check.imap.ok) throw new AccountError(`Incoming mail (IMAP): ${check.imap.error}`, check.imap.refused ? 'imap-refused' : 'imap');
+        }
+        if (smtp) {
+            const check = await testSmtp(smtp);
+            if (!check.ok) throw new AccountError(`Outgoing mail (SMTP): ${check.error}`, check.refused ? 'smtp-refused' : 'smtp');
+        }
+        accounts.updateConnection(id, { imap, smtp: changes.smtp === undefined ? undefined : smtp });
+        if (imap) await this.reconnect(id);
+        return accounts.get(id)!;
+    }
+
+    /** Starts an account again with its saved settings (its worker took the password when it was made). */
+    async reconnect(id: string): Promise<void> {
+        const config = this.requireAccounts().imapConfigs().find(c => c.id === id);
+        const old = this.workers.get(id);
+        if (old) {
+            old.removeAllListeners(); // no "stopped" in between: the new worker says where it's at
+            await old.stop();
+            this.workers.delete(id);
+        }
+        if (config) this.startWorker(config);
+    }
+
+    /** The accounts' order, on the rail and in Settings. */
+    setOrder(ids: string[]): void {
+        try {
+            this.requireAccounts().setOrder(ids);
+        } catch (err) {
+            throw new AccountError((err as Error).message);
+        }
+        this.emit('accounts', { reordered: true });
     }
 
     private startWorker(config: AccountConfig): void {
@@ -115,7 +174,7 @@ export async function testConnection(input: Pick<AccountInput, 'imap' | 'smtp'>)
         await client.connect();
         result.imap = { ok: true };
     } catch (err) {
-        result.imap = { ok: false, error: explain(err) };
+        result.imap = { ok: false, error: explain(err), ...(isRefusal(err) ? { refused: true } : {}) };
     } finally {
         await client.logout().catch(() => client.close());
     }
@@ -124,7 +183,7 @@ export async function testConnection(input: Pick<AccountInput, 'imap' | 'smtp'>)
 }
 
 /** Logs in to the outgoing mail server without sending anything. */
-export async function testSmtp(smtp: NonNullable<AccountInput['smtp']>): Promise<{ ok: boolean; error?: string }> {
+export async function testSmtp(smtp: NonNullable<AccountInput['smtp']>): Promise<ServerCheck> {
     const transport = nodemailer.createTransport({
         host: smtp.host, port: smtp.port, secure: smtp.secure,
         auth: { user: smtp.user, pass: smtp.pass },
@@ -135,16 +194,22 @@ export async function testSmtp(smtp: NonNullable<AccountInput['smtp']>): Promise
         await transport.verify();
         return { ok: true };
     } catch (err) {
-        return { ok: false, error: explain(err) };
+        return { ok: false, error: explain(err), ...(isRefusal(err) ? { refused: true } : {}) };
     } finally {
         transport.close();
     }
 }
 
+/** The server refused the username or password (rather than being unreachable or misconfigured). */
+function isRefusal(err: unknown): boolean {
+    const e = err as { authenticationFailed?: boolean; code?: string; responseCode?: number };
+    return !!e.authenticationFailed || e.code === 'EAUTH' || e.responseCode === 535;
+}
+
 /** Plain-language reasons instead of error codes. */
 function explain(err: unknown): string {
-    const e = err as { authenticationFailed?: boolean; code?: string; responseCode?: number; message?: string; responseText?: string };
-    if (e.authenticationFailed || e.code === 'EAUTH' || e.responseCode === 535) return 'the server rejected the username or password';
+    const e = err as { code?: string; message?: string; responseText?: string };
+    if (isRefusal(err)) return 'the server rejected the username or password';
     // nodemailer wraps socket errors in its own codes (ESOCKET, ECONNECTION) and keeps the
     // underlying cause only in the message, so look there first.
     const cause = /\b(ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET)\b/.exec(e.message ?? '')?.[1];

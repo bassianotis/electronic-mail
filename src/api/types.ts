@@ -136,6 +136,9 @@ export interface Account {
     state: ConnectionState;
     error: string | null;
     lastSyncAt: string | null;
+    /** While the password is refused: when the host first refused it, and when Mail logs in again. */
+    rejectedAt: string | null;
+    retryAt: string | null;
     stateToken: string;
 }
 
@@ -150,10 +153,30 @@ export interface AccountSettings {
     id: string;
     email: string;
     displayName: string | null;
+    tabName: string | null;
+    signature: string | null;
     inboxView: 'expand' | 'thread';
     hasSmtp: boolean;
     imap: ServerSettings;
     smtp: ServerSettings | null;
+}
+
+/** Why the engine refused a server change or a new account: which server, and whether it was the password. */
+export type ConnectionProblem = 'imap-refused' | 'imap' | 'smtp-refused' | 'smtp';
+
+/** An address's servers, found from the address alone (Settings → Add an email account). */
+export interface FoundServers {
+    imap: { host: string; port: number; secure: boolean };
+    smtp: { host: string; port: number; secure: boolean };
+}
+
+/** What restoring a settings file did (Settings → Back up settings). */
+export interface ImportSummary {
+    updatedAccounts: string[];
+    skippedAccounts: string[];
+    buckets: number;
+    rules: number;
+    problems: string[];
 }
 
 export type OutboxStatus = 'queued' | 'sending' | 'sent' | 'saved' | 'failed' | 'uncertain';

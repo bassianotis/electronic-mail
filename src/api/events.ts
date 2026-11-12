@@ -24,10 +24,25 @@ export interface OutboxEvent {
     error: string | null;
 }
 
+/** An account's connection as the engine last told it: the pill and Settings read it (never stale). */
+export interface LiveStatus {
+    state: ConnectionState;
+    error: string | null;
+    lastSyncAt: string | null;
+    /** While the password is refused: when the host first refused it, and when Mail logs in again. */
+    rejectedAt: string | null;
+    retryAt: string | null;
+}
+
+const liveStatus = (s: LiveStatus): LiveStatus => ({
+    state: s.state, error: s.error ?? null, lastSyncAt: s.lastSyncAt ?? null, rejectedAt: s.rejectedAt ?? null, retryAt: s.retryAt ?? null,
+});
+
 class EngineEvents {
     private source: EventSource | null = null;
     private readonly tokens = new Map<string, string>();
     private readonly connection = new Map<string, ConnectionState>();
+    private readonly details = new Map<string, LiveStatus>();
     private readonly listeners = new Set<Listener>();
     private readonly taskListeners = new Set<(e: TaskEvent) => void>();
     private readonly outboxListeners = new Set<(e: OutboxEvent) => void>();
@@ -59,16 +74,19 @@ class EngineEvents {
                 .catch(() => this.reconnectLater());
         };
         source.addEventListener('state', e => {
-            const data = JSON.parse((e as MessageEvent).data) as { changed: Record<string, { state: string; status?: ConnectionState }> };
+            const data = JSON.parse((e as MessageEvent).data) as { changed: Record<string, { state: string; status?: ConnectionState; detail?: LiveStatus }> };
             for (const [account, v] of Object.entries(data.changed)) {
                 this.tokens.set(account, v.state);
                 if (v.status) this.connection.set(account, v.status);
+                if (v.detail) this.details.set(account, liveStatus(v.detail));
+                else if (v.status && this.details.get(account)?.state !== v.status) this.details.delete(account);
             }
             this.changed();
         });
         source.addEventListener('status', e => {
-            const s = JSON.parse((e as MessageEvent).data) as { account: string; state: ConnectionState; stateToken: string };
+            const s = JSON.parse((e as MessageEvent).data) as LiveStatus & { account: string; stateToken: string };
             this.connection.set(s.account, s.state);
+            this.details.set(s.account, liveStatus(s));
             this.changed();
         });
         source.addEventListener('task', e => {
@@ -122,6 +140,10 @@ class EngineEvents {
 
     connectionOf(account: string | null): ConnectionState | undefined {
         return account ? this.connection.get(account) : undefined;
+    }
+
+    statusOf(account: string): LiveStatus | undefined {
+        return this.details.get(account);
     }
 
     subscribe = (l: Listener): (() => void) => {
@@ -189,4 +211,20 @@ export function useAccountState(account: string | null): string | undefined {
 export function useConnection(account: string | null): ConnectionState | undefined {
     useSyncExternalStore(engineEvents.subscribe, engineEvents.getSnapshot);
     return engineEvents.connectionOf(account);
+}
+
+/**
+ * Every account's status as it is now: the live one when the engine has sent it, else what the
+ * account list said when it was fetched (the pill's tooltip used to read only that, and went stale).
+ */
+export function useStatuses(accounts: ({ id: string } & LiveStatus)[]): Map<string, LiveStatus> {
+    useSyncExternalStore(engineEvents.subscribe, engineEvents.getSnapshot);
+    return new Map(accounts.map(a => {
+        const live = engineEvents.statusOf(a.id);
+        const state = engineEvents.connectionOf(a.id) ?? live?.state ?? a.state;
+        // When mail was last checked: whichever is newer (the engine pushes only the first check;
+        // the account list, fetched again when Settings opens, has the latest)
+        const lastSyncAt = [live?.lastSyncAt, a.lastSyncAt].filter((t): t is string => !!t).sort().pop() ?? null;
+        return [a.id, { ...(live ?? liveStatus(a)), state, lastSyncAt }];
+    }));
 }

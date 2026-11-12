@@ -27,6 +27,9 @@ export interface AccountStatus {
     state: ConnectionState;
     error: string | null;
     lastSyncAt: string | null;
+    /** While the password is refused: when the host first refused it, and when Mail logs in again. */
+    rejectedAt: string | null;
+    retryAt: string | null;
     /** Opaque token that changes whenever anything the UI shows may have changed (JMAP-style). */
     stateToken: string;
 }
@@ -89,6 +92,8 @@ export class AccountWorker extends EventEmitter {
     private state: ConnectionState = 'stopped';
     private error: string | null = null;
     private lastSyncAt: string | null = null;
+    private rejectedAt: string | null = null;
+    private retryAt: string | null = null;
     private lastVerify = Date.now();
     private nextSweep = 0;
     private readonly boot = Date.now().toString(36);
@@ -155,7 +160,10 @@ export class AccountWorker extends EventEmitter {
     }
 
     status(): AccountStatus {
-        return { account: this.account.id, state: this.state, error: this.error, lastSyncAt: this.lastSyncAt, stateToken: this.stateToken };
+        return {
+            account: this.account.id, state: this.state, error: this.error, lastSyncAt: this.lastSyncAt,
+            rejectedAt: this.rejectedAt, retryAt: this.retryAt, stateToken: this.stateToken,
+        };
     }
 
     start(): void {
@@ -334,7 +342,11 @@ export class AccountWorker extends EventEmitter {
                 for (const path of folders) await syncFolder(client, this.store, this.account.id, path, changes);
             } else if (job === 'check') {
                 changes.merge((await syncChangedFolders(client, this.store, this.account.id)).changes);
+                const first = !this.lastSyncAt;
                 this.lastSyncAt = new Date().toISOString();
+                // Said once, when its first check finishes (a new account's "Loading mail…" ends);
+                // later checks are read with the account list, not pushed every minute
+                if (first) this.emit('status', this.status());
             } else if (job === 'sweep') {
                 const at = Date.now();
                 this.nextSweep = this.sweepAfter(at, 0); // a failed sweep waits its turn too
@@ -570,12 +582,16 @@ export class AccountWorker extends EventEmitter {
      * password for a while (owner, 2026-11-10); a wrong one costs one failed login per wait.
      */
     private passwordRefused(): void {
+        if (this.state !== 'auth-failed') this.rejectedAt = new Date().toISOString();
         this.setState('auth-failed', 'The mail server rejected the password. Update it in Settings.');
         if (this.stopped || this.authTimer || this.retryInFlight) return;
         this.loginRetry = false; // a refusal that arrives late starts the wait over
         const wait = this.authRetry * (0.9 + Math.random() * 0.2);
         this.authRetry = Math.min(this.authRetry * 2, this.opts.authRetryMaxMs);
         this.log(`[${this.account.email}] password refused; trying again in ${Math.round(wait / 60_000)} min`);
+        // Settings says when (the time of the next try)
+        this.retryAt = new Date(Date.now() + wait).toISOString();
+        this.emit('status', this.status());
         this.authTimer = setTimeout(() => {
             this.authTimer = null;
             if (this.stopped || this.state !== 'auth-failed') return;
@@ -596,6 +612,10 @@ export class AccountWorker extends EventEmitter {
         if (this.state === state && this.error === error) return;
         this.state = state;
         this.error = error;
+        if (state !== 'auth-failed') {
+            this.rejectedAt = null;
+            this.retryAt = null;
+        }
         this.emit('status', this.status());
     }
 

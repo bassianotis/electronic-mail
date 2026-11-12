@@ -107,3 +107,27 @@ test('rules file new arrivals only; never retroactively, never against the user,
         app.close();
     }
 });
+
+test('rules: edited in place, put back where they were (Undo), and the words Settings shows', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-edit-'));
+    const app = new AppDb(path.join(dir, 'app.sqlite'));
+    const accounts = new Accounts(app, loadOrCreateKey(path.join(dir, 'secret.key')));
+    for (const id of ['a', 'b']) accounts.create({ email: `${id}@example.test`, imap: { host: 'h', port: 993, secure: true, user: id, pass: 'p' } }, id);
+    const rules = new Rules(app);
+    const first = rules.add('a', 'news@example.com', 'Reads', '2026-11-01T10:00:00.000Z');
+    rules.add('a', '@shop.example', 'Tasks', '2026-11-02T10:00:00.000Z');
+    assert.throws(() => rules.add('a', 'news', 'Reads'), /Use a full address \(news@example\.com\) or a domain starting with @ \(@example\.com\)/);
+    assert.throws(() => rules.add('a', 'NEWS@example.com', 'Tasks'), /There's already a rule for news@example\.com/);
+
+    assert.deepEqual(rules.update('a', first.id, 'Letters@Example.com', 'Tasks'), { ...first, senderPattern: 'letters@example.com', bucket: 'Tasks' });
+    assert.equal(rules.update('a', first.id, 'letters@example.com', 'Reads')?.bucket, 'Reads', 'its own pattern is no duplicate');
+    assert.throws(() => rules.update('a', first.id, '@shop.example', 'Reads'), /There's already a rule for @shop\.example/);
+    assert.equal(rules.update('a', 'no-such-rule', 'x@example.com', 'Reads'), null);
+    assert.equal(rules.update('b', first.id, 'x@example.com', 'Reads'), null, 'another account\'s rule');
+
+    // Deleted, then Undo: back in its place in the list
+    rules.remove('a', first.id);
+    rules.add('a', 'letters@example.com', 'Reads', first.createdAt);
+    assert.deepEqual(rules.list('a').map(r => r.senderPattern), ['letters@example.com', '@shop.example']);
+    app.close();
+});

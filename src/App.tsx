@@ -158,7 +158,7 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
     const [pendingConversation, setPendingConversation] = useState<{ accountId: string; threadId: string } | null>(null);
     const [pendingDeepLink, setPendingDeepLink] = useState<string | null>(() => new URLSearchParams(window.location.search).get('thread'));
 
-    const { buckets, accounts, accountsLoaded, accountsFailing, isAddingAccount, setIsAddingAccount, fetchAccounts, activeAccountId, setActiveAccountId, viewOf, showToast } = useMail();
+    const { buckets, accounts, accountsLoaded, accountsFailing, fetchAccounts, activeAccountId, setActiveAccountId, viewOf, showToast } = useMail();
 
     // Reset to inbox whenever the active email account changes
     useEffect(() => {
@@ -290,15 +290,9 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
         ) : <StartFrame />;
     }
 
-    if (isAddingAccount || accounts.length === 0) {
-        return <SetupWizard
-            isNewAccount={true}
-            onCancel={accounts.length ? () => setIsAddingAccount(false) : undefined}
-            onComplete={() => {
-                setIsAddingAccount(false);
-                void fetchAccounts();
-            }}
-        />;
+    // The very first account only: later ones are added in Settings → Accounts (owner, 2026-11-11)
+    if (accounts.length === 0) {
+        return <SetupWizard isNewAccount={true} onComplete={() => void fetchAccounts()} />;
     }
 
     const activeBucket = buckets.find(b => b.id === activeBucketId);

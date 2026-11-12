@@ -27,9 +27,10 @@ import { suggestContacts } from '../app/contacts.ts';
 import { MAX_UPLOAD_BYTES, UploadError, type Uploads } from '../app/uploads.ts';
 import type { Drafts } from '../app/drafts.ts';
 import { search } from '../search/search.ts';
-import { AccountError, testConnection, testSmtp, type AccountManager } from '../app/manager.ts';
+import { AccountError, testConnection, type AccountManager, type ServerChange } from '../app/manager.ts';
 import { exportSettings, importSettings, SettingsError } from '../app/settings.ts';
 import { SIGNATURE_MAX, TAB_NAME_MAX, type AccountInput } from '../app/accounts.ts';
+import { discoverServers, type FoundServers } from '../app/discover.ts';
 
 export interface ApiContext {
     store: Store;
@@ -62,6 +63,8 @@ export interface ApiContext {
     drafts?: Drafts;
     /** Adds/removes accounts while running; its events feed the event stream. */
     manager?: AccountManager;
+    /** Finds an address's servers (default: app/discover.ts, over DNS); tests pass their own. */
+    discover?: (email: string) => Promise<FoundServers | null>;
     /** Add the Secure flag to the session cookie (set when served over HTTPS). */
     secureCookies?: boolean;
     /**
@@ -321,9 +324,13 @@ export function createApiServer(ctx: ApiContext): http.Server {
 
     // ---- accounts
     route('GET', '/api/v2/accounts', (_req, res) => {
-        const summaries = new Map((ctx.accounts?.list() ?? []).map(a => [a.id, a]));
+        const listed = ctx.accounts?.list() ?? [];
+        const summaries = new Map(listed.map(a => [a.id, a]));
+        // In the order the owner set (Settings → Accounts), not the order the workers started in
+        const place = new Map(listed.map((a, i) => [a.id, i]));
+        const workers = [...ctx.workers.values()].sort((a, b) => (place.get(a.account.id) ?? Infinity) - (place.get(b.account.id) ?? Infinity));
         json(res, 200, {
-            accounts: [...ctx.workers.values()].map(w => ({
+            accounts: workers.map(w => ({
                 id: w.account.id, email: w.account.email,
                 displayName: summaries.get(w.account.id)?.displayName ?? null,
                 tabName: summaries.get(w.account.id)?.tabName ?? null,
@@ -346,6 +353,23 @@ export function createApiServer(ctx: ApiContext): http.Server {
         if (!ctx.manager) throw new HttpError(404, 'accounts cannot be added here');
         const account = await ctx.manager.add(accountInput(await readJson(req), true));
         json(res, 201, { account });
+    });
+
+    // An address's mail servers, found without logging in (app/discover.ts); null when not found.
+    route('POST', '/api/v2/accounts/discover', async (req, res) => {
+        const { email } = await readJson<{ email?: unknown }>(req);
+        if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) throw new HttpError(400, 'a valid email address is required');
+        json(res, 200, { servers: await (ctx.discover ?? discoverServers)(email) });
+    });
+
+    // The accounts' order on the rail (Settings → Accounts, by dragging)
+    route('PUT', '/api/v2/account-order', async (req, res) => {
+        writable();
+        if (!ctx.manager) throw new HttpError(404, 'accounts cannot be changed here');
+        const { ids } = await readJson<{ ids?: unknown }>(req);
+        if (!Array.isArray(ids) || !ids.every(id => typeof id === 'string')) throw new HttpError(400, 'ids must be a list of account ids');
+        ctx.manager.setOrder(ids as string[]);
+        json(res, 200, { ok: true });
     });
 
     route('DELETE', '/api/v2/accounts/:account', async (_req, res, p) => {
@@ -385,24 +409,25 @@ export function createApiServer(ctx: ApiContext): http.Server {
     });
 
     route('PATCH', '/api/v2/accounts/:account', async (req, res, p) => {
-        const w = worker(p);
+        worker(p);
         if (!ctx.accounts) throw new HttpError(404, 'account settings are not available');
-        const body = await readJson<{ displayName?: unknown; inboxView?: unknown; tabName?: unknown; signature?: unknown; smtp?: unknown }>(req);
+        const body = await readJson<{ displayName?: unknown; inboxView?: unknown; tabName?: unknown; signature?: unknown; imap?: unknown; smtp?: unknown }>(req);
         if (body.inboxView !== undefined && body.inboxView !== 'expand' && body.inboxView !== 'thread') throw new HttpError(400, 'inboxView must be "expand" or "thread"');
         if (body.displayName !== undefined && body.displayName !== null && typeof body.displayName !== 'string') throw new HttpError(400, 'displayName must be text');
         if (body.tabName !== undefined && body.tabName !== null && typeof body.tabName !== 'string') throw new HttpError(400, 'tabName must be text');
         if (typeof body.tabName === 'string' && [...body.tabName.trim()].length > TAB_NAME_MAX) throw new HttpError(400, `the tab name can be at most ${TAB_NAME_MAX} characters`);
         if (body.signature !== undefined && body.signature !== null && typeof body.signature !== 'string') throw new HttpError(400, 'signature must be text');
         if (typeof body.signature === 'string' && body.signature.length > SIGNATURE_MAX) throw new HttpError(400, `the signature can be at most ${SIGNATURE_MAX} characters`);
-        if (body.smtp !== undefined) {
+        if (body.imap !== undefined || body.smtp !== undefined) {
             writable();
-            // Like adding an account: the new outgoing server is tried before anything is saved.
-            const smtp = body.smtp === null ? null : serverInput(body.smtp, 'Outgoing mail (SMTP)', ctx.accounts.smtpConfig(p.account)?.pass);
-            if (smtp) {
-                const check = await testSmtp(smtp);
-                if (!check.ok) throw new HttpError(400, `Outgoing mail (SMTP): ${check.error}`);
-            }
-            ctx.accounts.updateConnection(p.account, { smtp });
+            if (!ctx.manager) throw new HttpError(404, 'connections cannot be changed here');
+            // Like adding an account: each server given is tried before anything is saved, and a
+            // new incoming password starts the account again with it (settings-audit.md, section 3)
+            if (body.imap === null) throw new HttpError(400, 'Mail needs an incoming server');
+            await ctx.manager.changeConnection(p.account, {
+                imap: body.imap === undefined ? undefined : serverChange(body.imap, 'Incoming mail (IMAP)'),
+                smtp: body.smtp === undefined ? undefined : body.smtp === null ? null : serverChange(body.smtp, 'Outgoing mail (SMTP)'),
+            });
         }
         const updated = ctx.accounts.update(p.account, {
             displayName: body.displayName as string | null | undefined,
@@ -410,7 +435,7 @@ export function createApiServer(ctx: ApiContext): http.Server {
             tabName: body.tabName as string | null | undefined,
             signature: body.signature as string | null | undefined,
         });
-        w.touch();
+        ctx.workers.get(p.account)?.touch(); // the worker as it is now (a new password starts a new one)
         json(res, 200, { account: updated });
     });
 
@@ -607,10 +632,22 @@ export function createApiServer(ctx: ApiContext): http.Server {
     route('POST', '/api/v2/accounts/:account/rules', async (req, res, p) => {
         worker(p);
         writable();
+        const { senderPattern, bucket, createdAt } = await readJson<{ senderPattern?: unknown; bucket?: unknown; createdAt?: unknown }>(req);
+        if (typeof senderPattern !== 'string' || typeof bucket !== 'string') throw new HttpError(400, 'senderPattern and bucket are required');
+        if (ctx.buckets && !ctx.buckets.list(p.account).some(b => b.name === bucket)) throw new HttpError(400, `no bucket called "${bucket}"`);
+        // createdAt: Undo puts a deleted rule back where it was in the list
+        json(res, 201, { rule: rules().add(p.account, senderPattern, bucket, typeof createdAt === 'string' ? createdAt : undefined) });
+    });
+
+    route('PATCH', '/api/v2/accounts/:account/rules/:rule', async (req, res, p) => {
+        worker(p);
+        writable();
         const { senderPattern, bucket } = await readJson<{ senderPattern?: unknown; bucket?: unknown }>(req);
         if (typeof senderPattern !== 'string' || typeof bucket !== 'string') throw new HttpError(400, 'senderPattern and bucket are required');
         if (ctx.buckets && !ctx.buckets.list(p.account).some(b => b.name === bucket)) throw new HttpError(400, `no bucket called "${bucket}"`);
-        json(res, 201, { rule: rules().add(p.account, senderPattern, bucket) });
+        const rule = rules().update(p.account, p.rule, senderPattern, bucket);
+        if (!rule) throw new HttpError(404, 'rule not found');
+        json(res, 200, { rule });
     });
 
     route('DELETE', '/api/v2/accounts/:account/rules/:rule', (_req, res, p) => {
@@ -832,7 +869,9 @@ export function createApiServer(ctx: ApiContext): http.Server {
             'X-Accel-Buffering': 'no', // let reverse proxies stream instead of buffering
         });
         const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-        const snapshot = () => Object.fromEntries([...ctx.workers.values()].map(w => [w.account.id, { state: w.stateToken, status: w.status().state }]));
+        // Each account's token, its connection, and the rest of its status (when a password was
+        // rejected, when Mail tries again), so a page that connects late knows as much as the others
+        const snapshot = () => Object.fromEntries([...ctx.workers.values()].map(w => [w.account.id, { state: w.stateToken, status: w.status().state, detail: w.status() }]));
         send('state', { changed: snapshot() });
 
         const onChanged = (e: ChangedEvent) => {
@@ -912,7 +951,9 @@ export function createApiServer(ctx: ApiContext): http.Server {
                 : /offline/.test((err as Error)?.message ?? '') ? 503
                 : 500;
             if (status === 500) ctx.log?.(`API ${req.method} ${url.pathname}: ${(err as Error)?.stack ?? err}`);
-            if (!res.headersSent) json(res, status, { error: status === 500 ? 'internal error' : (err as Error).message, ...(err instanceof HttpError && err.reason ? { reason: err.reason } : {}) });
+            // A reason says why, for the screens: who signed out (401), or which server refused (AccountError)
+            const reason = err instanceof HttpError || err instanceof AccountError ? err.reason : undefined;
+            if (!res.headersSent) json(res, status, { error: status === 500 ? 'internal error' : (err as Error).message, ...(reason ? { reason } : {}) });
             else res.destroy();
         }
     });
@@ -934,6 +975,17 @@ function serverInput(s: unknown, label: string, savedPass?: string): { host: str
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new HttpError(400, `${label}: the port must be a number from 1 to 65535`);
     if (typeof v.user !== 'string' || !v.user || !pass) throw new HttpError(400, `${label}: username and password are required`);
     return { host: v.host.trim(), port, secure: v.secure !== false, user: v.user, pass };
+}
+
+/** A server as changed in Settings: like serverInput, but no password keeps the saved one. */
+function serverChange(s: unknown, label: string): ServerChange {
+    const v = (s ?? {}) as Record<string, unknown>;
+    const port = Number(v.port);
+    if (typeof v.host !== 'string' || !v.host.trim()) throw new HttpError(400, `${label}: the server name is required`);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new HttpError(400, `${label}: the port must be a number from 1 to 65535`);
+    if (typeof v.user !== 'string' || !v.user.trim()) throw new HttpError(400, `${label}: the username is required`);
+    if (v.pass !== undefined && typeof v.pass !== 'string') throw new HttpError(400, `${label}: the password must be text`);
+    return { host: v.host.trim(), port, secure: v.secure !== false, user: v.user.trim(), ...(v.pass ? { pass: v.pass as string } : {}) };
 }
 
 function accountInput(value: unknown, requireEmail: boolean): AccountInput {

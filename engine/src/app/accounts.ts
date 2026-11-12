@@ -87,6 +87,24 @@ export class Accounts {
         return { host: r.smtp_host, port: r.smtp_port ?? 465, secure: !!r.smtp_secure, user: r.smtp_user ?? r.email, pass: decrypt(this.key, r.smtp_pass) };
     }
 
+    /** The incoming server with its password (decrypted in memory only), to test a change against. */
+    imapConfig(id: string): SmtpConfig | null {
+        const r = this.row(id);
+        if (!r) return null;
+        return { host: r.imap_host, port: r.imap_port, secure: !!r.imap_secure, user: r.imap_user, pass: decrypt(this.key, r.imap_pass) };
+    }
+
+    /** The order of the accounts (the rail's and Settings'): every account's id, once, first to last. */
+    setOrder(ids: string[]): void {
+        const known = this.list().map(a => a.id);
+        if (ids.length !== known.length || new Set(ids).size !== ids.length || !ids.every(id => known.includes(id))) {
+            throw new RangeError('the order must list every account once');
+        }
+        this.app.transaction(() => {
+            ids.forEach((id, i) => this.app.db.prepare('UPDATE accounts SET sort_order = ? WHERE id = ?').run(i, id));
+        });
+    }
+
     create(input: AccountInput, id: string = crypto.randomUUID()): AccountSummary {
         const order = (this.app.db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM accounts').get() as { n: number }).n;
         this.app.db.prepare(`INSERT INTO accounts (id, email, display_name, imap_host, imap_port, imap_secure, imap_user, imap_pass,

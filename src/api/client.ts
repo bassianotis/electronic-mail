@@ -10,9 +10,12 @@ const BASE = '/api/v2';
 
 export class ApiError extends Error {
     readonly status: number;
-    constructor(status: number, message: string) {
+    /** Why, when the engine says (which server refused a change, or why a session ended). */
+    readonly reason: string | null;
+    constructor(status: number, message: string, reason: string | null = null) {
         super(message);
         this.status = status;
+        this.reason = reason;
     }
 }
 
@@ -57,7 +60,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const data = res.headers.get('content-type')?.includes('json') ? await res.json().catch(() => null) : null;
     if (!res.ok) {
         noteSignedOut(res.status, path, (data as { reason?: string } | null)?.reason);
-        throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? res.statusText);
+        throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? res.statusText, (data as { reason?: string } | null)?.reason ?? null);
     }
     return data as T;
 }

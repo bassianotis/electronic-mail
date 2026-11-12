@@ -16,6 +16,7 @@ import { loadOrCreateKey } from '../src/app/secrets.ts';
 import { AccountManager, testConnection } from '../src/app/manager.ts';
 import { exportSettings, importSettings } from '../src/app/settings.ts';
 import { createApiServer } from '../src/api/server.ts';
+import { discoverServers, knownProvider } from '../src/app/discover.ts';
 
 const imap = (user: string, pass = 'pass') => ({ host: HARNESS.host, port: HARNESS.port, secure: false, user, pass });
 const smtp = { host: '127.0.0.1', port: 11025, secure: false, user: 'x', pass: 'y' };
@@ -197,4 +198,120 @@ test('settings export has no passwords; import restores bucket looks and rules; 
     tooLong.accounts[0].tabName = 'Far too long a name';
     assert.ok(importSettings(b.app, b.accounts, b.rules, tooLong).problems.some(p => /at most 12/.test(p)), 'a too-long tab name is reported, not imported');
     assert.equal(b.accounts.get(same.id)?.tabName, 'Work');
+});
+
+test('a refused password: Settings saves a new one only once the host takes it, and the account is back online at once', async () => {
+    const user = freshUser();
+    const phone: ImapFlow = await connect(user);
+    for (const f of FOLDERS) await phone.mailboxCreate(f);
+    const { app, accounts, rules } = appLayer();
+    const store = new Store(':memory:');
+    // As if the password had been changed at the host: the saved one is refused from the start
+    const created = accounts.create({ email: user, imap: imap(user, 'old-password'), smtp: { ...smtp, user, pass: 'old-password' } });
+    // Waits long enough that only Settings can bring it back within the test
+    const manager = new AccountManager({ store, accounts, rules, workerOptions: { backoffMinMs: 100, inboxDebounceMs: 50, authRetryMinMs: 600_000, authRetryMaxMs: 600_000 } });
+    manager.start(accounts.imapConfigs());
+    const server = createApiServer({ store, workers: manager.workers, accounts, rules, manager, app });
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v2`;
+    const patch = (body: unknown) => fetch(`${base}/accounts/${created.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const status = async () => ((await (await fetch(`${base}/accounts`)).json()).accounts as { id: string; state: string; rejectedAt: string | null; retryAt: string | null }[])[0];
+    const incoming = { host: HARNESS.host, port: HARNESS.port, secure: false, user };
+    try {
+        await until('refused', async () => (await status()).state === 'auth-failed', 30_000);
+        const refused = await status();
+        assert.ok(refused.rejectedAt && refused.retryAt, 'the status says when it was refused and when Mail tries again');
+        assert.ok(Date.parse(refused.retryAt!) - Date.parse(refused.rejectedAt!) > 500_000, 'the next try is the long wait away');
+        const before = manager.workers.get(created.id);
+
+        // A wrong new password: refused, nothing saved, the account as it was
+        const wrong = await patch({ imap: { ...incoming, pass: 'still-wrong' } });
+        assert.equal(wrong.status, 400);
+        const wrongBody = await wrong.json();
+        // 'imap-refused' lets the screens say it was the password. (The test server slows each refused
+        // login down more than the last, so when other tests refused logins just before, this one can
+        // time out instead: still refused, still nothing saved.)
+        assert.ok(['imap-refused', 'imap'].includes(wrongBody.reason), wrongBody.error);
+        if (wrongBody.reason === 'imap-refused') assert.match(wrongBody.error, /Incoming mail \(IMAP\): the server rejected the username or password/);
+        assert.equal(accounts.imapConfig(created.id)?.pass, 'old-password', 'nothing saved');
+        assert.equal(manager.workers.get(created.id), before, 'not restarted');
+        assert.equal((await status()).state, 'auth-failed');
+
+        // The right one, for both directions at once (one password per account): saved, and online
+        // without waiting for the next try
+        const right = await patch({ imap: { ...incoming, pass: 'pass' }, smtp: { ...smtp, user, pass: 'pass' } });
+        assert.equal(right.status, 200);
+        assert.equal(accounts.imapConfig(created.id)?.pass, 'pass');
+        assert.equal(accounts.smtpConfig(created.id)?.pass, 'pass');
+        await until('online at once', async () => (await status()).state === 'online', 15_000);
+        const online = await status();
+        assert.equal(online.rejectedAt, null);
+        assert.equal(online.retryAt, null);
+
+        // One server failing saves nothing: an incoming change that works waits for the sending one
+        const otherName = HARNESS.host === '127.0.0.1' ? 'localhost' : '127.0.0.1';
+        const halfRight = await patch({ imap: { ...incoming, host: otherName, pass: 'pass' }, smtp: { ...smtp, user, port: 1 } });
+        assert.equal(halfRight.status, 400);
+        assert.equal((await halfRight.json()).reason, 'smtp', 'the sending server, and not its password');
+        assert.equal(accounts.imapConfig(created.id)?.host, HARNESS.host, 'the incoming change wasn\'t saved either');
+    } finally {
+        server.closeAllConnections();
+        await new Promise(r => server.close(r));
+        await manager.stopAll();
+        await phone.logout().catch(() => {});
+        store.close();
+        app.close();
+    }
+});
+
+test('account order: set by the owner, used by the account list; every account once or nothing changes', async () => {
+    const { app, accounts, rules } = appLayer();
+    const store = new Store(':memory:');
+    const ids = ['first', 'second', 'third'].map(n => accounts.create({ email: `${n}@example.test`, imap: { host: '127.0.0.1', port: 1, secure: false, user: n, pass: 'p' } }).id);
+    const manager = new AccountManager({ store, accounts, rules, workerOptions: { backoffMinMs: 60_000 } });
+    manager.start(accounts.imapConfigs());
+    const server = createApiServer({ store, workers: manager.workers, accounts, rules, manager, app });
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v2`;
+    const put = (body: unknown) => fetch(`${base}/account-order`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const listed = async () => ((await (await fetch(`${base}/accounts`)).json()).accounts as { email: string }[]).map(a => a.email.split('@')[0]);
+    try {
+        assert.deepEqual(await listed(), ['first', 'second', 'third']);
+        assert.equal((await put({ ids: [ids[2], ids[0], ids[1]] })).status, 200);
+        assert.deepEqual(await listed(), ['third', 'first', 'second']);
+        assert.deepEqual(accounts.list().map(a => a.email.split('@')[0]), ['third', 'first', 'second'], 'stored');
+        assert.equal((await put({ ids: [ids[0], ids[1]] })).status, 400, 'one missing');
+        assert.equal((await put({ ids: [ids[0], ids[0], ids[1]] })).status, 400, 'one twice');
+        assert.deepEqual(await listed(), ['third', 'first', 'second'], 'unchanged');
+    } finally {
+        server.closeAllConnections();
+        await new Promise(r => server.close(r));
+        await manager.stopAll();
+        store.close();
+        app.close();
+    }
+});
+
+test('finding servers from the address: providers, SRV records, the provider behind MX, then the usual names', async () => {
+    const none = { resolveSrv: async () => [], resolveMx: async () => [], answers: async () => false };
+    assert.equal(knownProvider('gmail.com')?.imap.host, 'imap.gmail.com', 'a known provider, by its domain');
+    assert.equal(knownProvider('example.test'), null);
+    assert.equal(await discoverServers('me@nowhere.example', none), null, 'nothing answers: Settings asks');
+    assert.equal(await discoverServers('not an address', none), null);
+
+    const srv = await discoverServers('me@srv.example', {
+        ...none,
+        resolveSrv: async name => name === '_imaps._tcp.srv.example' ? [{ name: 'in.srv.example.', port: 993, priority: 0, weight: 0 }]
+            : name === '_submission._tcp.srv.example' ? [{ name: 'out.srv.example', port: 587, priority: 0, weight: 0 }] : [],
+    });
+    assert.deepEqual(srv, { imap: { host: 'in.srv.example', port: 993, secure: true }, smtp: { host: 'out.srv.example', port: 587, secure: false }, via: 'srv' });
+
+    const workspace = await discoverServers('me@company.example', { ...none, resolveMx: async () => [{ exchange: 'aspmx.l.google.com', priority: 1 }] });
+    assert.equal(workspace?.via, 'mx');
+    assert.equal(workspace?.smtp.host, 'smtp.gmail.com');
+
+    // Guesses: the first that answers, in order (secure ports before the others)
+    const open = new Set(['mail.guess.example:993', 'mail.guess.example:143', 'smtp.guess.example:587']);
+    const guessed = await discoverServers('me@guess.example', { ...none, answers: async (host, port) => open.has(`${host}:${port}`) });
+    assert.deepEqual(guessed, { imap: { host: 'mail.guess.example', port: 993, secure: true }, smtp: { host: 'smtp.guess.example', port: 587, secure: false }, via: 'guess' });
 });
