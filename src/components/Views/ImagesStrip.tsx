@@ -6,7 +6,7 @@
  * "Always for this sender".
  */
 import React from 'react';
-import { Image, ImageOff, Loader2 } from 'lucide-react';
+import { Image, ImageOff, LoaderCircle } from 'lucide-react';
 import { useServerUnreachable } from '../../api/reachability';
 
 export type ImagesState = 'hidden' | 'loading' | 'loaded';
@@ -28,14 +28,14 @@ export const ImagesStrip: React.FC<{
                 </>
             ) : state === 'loading' ? (
                 <>
-                    <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                    <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
                     <span>Loading images…</span>
                 </>
             ) : (
                 <>
-                    <ImageOff size={16} aria-hidden="true" style={{ color: 'var(--color-text-faint)', flexShrink: 0 }} />
+                    <ImageOff size={16} aria-hidden="true" style={{ color: 'var(--text-4)', flexShrink: 0 }} />
                     <span>Images hidden</span>
-                    <span aria-hidden="true" style={{ color: 'var(--color-text-faint)' }}>·</span>
+                    <span aria-hidden="true" style={{ color: 'var(--text-4)' }}>·</span>
                     <button type="button" className="images-strip-load needs-server" disabled={offline} onClick={e => { e.stopPropagation(); onLoad(); }}>
                         Load images
                     </button>

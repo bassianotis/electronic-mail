@@ -5,15 +5,15 @@ export const DraftBadge = () => (
     <span style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '4px',
-        backgroundColor: 'var(--draft-bg)',
-        color: 'var(--draft-text)',
-        fontSize: 'var(--font-size-2xs)',
-        fontWeight: 'var(--weight-semibold)',
-        padding: 'var(--draft-pad)',
+        gap: 'var(--space-1)',
+        backgroundColor: 'transparent',
+        color: 'var(--action)',
+        fontSize: 'var(--size-caption)',
+        fontWeight: 'var(--weight-medium)',
+        padding: '0',
         borderRadius: 'var(--radius-full)'
     }}>
-        <Pencil size={14} style={{ display: 'var(--draft-icon)' }} />
+        <Pencil size={14} style={{ display: 'none' }} />
         Draft
     </span>
 );

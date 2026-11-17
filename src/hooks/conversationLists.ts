@@ -38,9 +38,3 @@ export function usePublishList(key: ListKey | null, cards: Email[], more?: { tot
 export function useConversationList(key: ListKey | null | undefined): ConversationList | null {
     return useSyncExternalStore(subscribe, () => (key ? lists.get(key) ?? null : null));
 }
-
-/** Forgets every list (the account changed: they all belong to the other one). */
-export function clearConversationLists() {
-    lists.clear();
-    for (const listener of listeners) listener();
-}

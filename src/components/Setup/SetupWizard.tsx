@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, AlertCircle, Loader, ArrowRight } from 'lucide-react';
-import { api, errorText } from '../../api/client';
+import { api } from '../../api/client';
 import type { Account } from '../../api/types';
+
+/** The engine's own words: the first run keeps its copy until its redesign (roadmap step 3), and picks the step by them. */
+const engineText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 interface SetupWizardProps {
     onComplete: () => void;
@@ -95,7 +98,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
             }
             return true;
         } catch (err) {
-            setError('Validation failed: ' + errorText(err));
+            setError('Validation failed: ' + engineText(err));
             return false;
         } finally {
             setValidating(false);
@@ -161,7 +164,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
             });
             setStep(4);
         } catch (err) {
-            const message = errorText(err);
+            const message = engineText(err);
             setError(message);
             setStep(/Outgoing mail|SMTP/i.test(message) ? 2 : /Incoming mail|IMAP/i.test(message) ? 1 : step);
         } finally {
@@ -175,8 +178,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
             alignItems: 'center',
             justifyContent: 'center',
             minHeight: '100vh',
-            backgroundColor: 'var(--color-bg)',
-            padding: '20px'
+            backgroundColor: 'var(--bg-page)',
+            padding: 'var(--space-5)'
         }}>
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -195,13 +198,13 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                         >
-                            <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 'var(--weight-bold)', marginBottom: '8px', textAlign: 'center' }}>
+                            <h1 style={{ fontSize: 'var(--size-page)', fontWeight: 'var(--weight-medium)', marginBottom: 'var(--space-2)', textAlign: 'center' }}>
                                 Set up Electronic Mail
                             </h1>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '32px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', marginTop: 'var(--space-8)' }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 'var(--font-size-sm)', fontWeight: 500, marginBottom: '8px' }}>
+                                    <label style={{ display: 'block', fontSize: 'var(--size-body)', fontWeight: 500, marginBottom: 'var(--space-2)' }}>
                                         Email address
                                     </label>
                                     <input
@@ -211,18 +214,18 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                         placeholder="you@example.com"
                                         style={{
                                             width: '100%',
-                                            padding: '8px 12px',
-                                            borderRadius: 'var(--radius-control)',
-                                            border: '1px solid var(--color-border)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            backgroundColor: 'var(--color-bg-subtle)',
-                                            color: 'var(--color-text-main)'
+                                            padding: 'var(--space-2) var(--space-3)',
+                                            borderRadius: 'var(--radius-2)',
+                                            border: '1px solid var(--line-1)',
+                                            fontSize: 'var(--size-body)',
+                                            backgroundColor: 'var(--surface-1)',
+                                            color: 'var(--text-1)'
                                         }}
                                     />
                                 </div>
 
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 'var(--font-size-sm)', fontWeight: 500, marginBottom: '8px' }}>
+                                    <label style={{ display: 'block', fontSize: 'var(--size-body)', fontWeight: 500, marginBottom: 'var(--space-2)' }}>
                                         Email password
                                     </label>
                                     <input
@@ -232,15 +235,15 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                         placeholder="••••••••••••"
                                         style={{
                                             width: '100%',
-                                            padding: '8px 12px',
-                                            borderRadius: 'var(--radius-control)',
-                                            border: '1px solid var(--color-border)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            backgroundColor: 'var(--color-bg-subtle)',
-                                            color: 'var(--color-text-main)'
+                                            padding: 'var(--space-2) var(--space-3)',
+                                            borderRadius: 'var(--radius-2)',
+                                            border: '1px solid var(--line-1)',
+                                            fontSize: 'var(--size-body)',
+                                            backgroundColor: 'var(--surface-1)',
+                                            color: 'var(--text-1)'
                                         }}
                                     />
-                                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                                    <div style={{ fontSize: 'var(--size-caption)', color: 'var(--text-3)', marginTop: 'var(--space-1)' }}>
                                         Use an <strong>App Password</strong> if you use Gmail, Outlook, or iCloud
                                     </div>
                                 </div>
@@ -249,12 +252,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                 <div style={{
                                     display: 'grid',
                                     gridTemplateColumns: '2fr 1fr',
-                                    gap: '12px',
-                                    paddingTop: '12px',
-                                    borderTop: '1px solid var(--color-border)'
+                                    gap: 'var(--space-3)',
+                                    paddingTop: 'var(--space-3)',
+                                    borderTop: '1px solid var(--line-1)'
                                 }}>
                                     <div>
-                                        <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 500, marginBottom: '4px', color: 'var(--color-text-muted)' }}>
+                                        <label style={{ display: 'block', fontSize: 'var(--size-caption)', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-3)' }}>
                                             IMAP host
                                         </label>
                                         <input
@@ -264,17 +267,17 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                             placeholder="imap.example.com"
                                             style={{
                                                 width: '100%',
-                                                padding: '8px 12px',
-                                                borderRadius: 'var(--radius-sm)',
-                                                border: '1px solid var(--color-border)',
-                                                fontSize: 'var(--font-size-sm)',
-                                                backgroundColor: 'var(--color-bg-subtle)',
-                                                color: 'var(--color-text-main)'
+                                                padding: 'var(--space-2) var(--space-3)',
+                                                borderRadius: 'var(--radius-2)',
+                                                border: '1px solid var(--line-1)',
+                                                fontSize: 'var(--size-body)',
+                                                backgroundColor: 'var(--surface-1)',
+                                                color: 'var(--text-1)'
                                             }}
                                         />
                                     </div>
                                     <div>
-                                        <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 500, marginBottom: '4px', color: 'var(--color-text-muted)' }}>
+                                        <label style={{ display: 'block', fontSize: 'var(--size-caption)', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-3)' }}>
                                             Port
                                         </label>
                                         <input
@@ -284,12 +287,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                             placeholder="993"
                                             style={{
                                                 width: '100%',
-                                                padding: '8px 12px',
-                                                borderRadius: 'var(--radius-sm)',
-                                                border: '1px solid var(--color-border)',
-                                                fontSize: 'var(--font-size-sm)',
-                                                backgroundColor: 'var(--color-bg-subtle)',
-                                                color: 'var(--color-text-main)'
+                                                padding: 'var(--space-2) var(--space-3)',
+                                                borderRadius: 'var(--radius-2)',
+                                                border: '1px solid var(--line-1)',
+                                                fontSize: 'var(--size-body)',
+                                                backgroundColor: 'var(--surface-1)',
+                                                color: 'var(--text-1)'
                                             }}
                                         />
                                     </div>
@@ -297,15 +300,15 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
 
                                 {error && (
                                     <div style={{
-                                        padding: '12px',
-                                        backgroundColor: 'var(--error-bg)',
-                                        border: '1px solid var(--error-border)',
-                                        borderRadius: 'var(--radius-control)',
-                                        color: 'var(--error-text)',
-                                        fontSize: 'var(--font-size-sm)',
+                                        padding: 'var(--space-3)',
+                                        backgroundColor: 'var(--danger-tint)',
+                                        border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
+                                        borderRadius: 'var(--radius-2)',
+                                        color: 'var(--danger)',
+                                        fontSize: 'var(--size-body)',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px'
+                                        gap: 'var(--space-2)'
                                     }}>
                                         <AlertCircle size={16} />
                                         {error}
@@ -317,20 +320,20 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                     disabled={validating}
                                     style={{
                                         width: '100%',
-                                        padding: '12px',
-                                        backgroundColor: 'var(--color-action)',
-                                        color: 'var(--color-on-action)',
+                                        padding: 'var(--space-3)',
+                                        backgroundColor: 'var(--action)',
+                                        color: 'var(--on-action)',
                                         border: 'none',
-                                        borderRadius: 'var(--radius-control)',
-                                        fontSize: 'var(--font-size-sm)',
-                                        fontWeight: 'var(--weight-semibold)',
+                                        borderRadius: 'var(--radius-2)',
+                                        fontSize: 'var(--size-body)',
+                                        fontWeight: 'var(--weight-medium)',
                                         cursor: validating ? 'wait' : 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        gap: '8px',
-                                        marginTop: '8px',
-                                        opacity: validating ? 0.7 : 1
+                                        gap: 'var(--space-2)',
+                                        marginTop: 'var(--space-2)',
+                                        opacity: validating ? 'var(--disabled-opacity)' : 1
                                     }}
                                 >
                                     {validating ? (
@@ -356,8 +359,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                         style={{
                                             background: 'none',
                                             border: 'none',
-                                            color: 'var(--color-text-muted)',
-                                            fontSize: 'var(--font-size-sm)',
+                                            color: 'var(--text-3)',
+                                            fontSize: 'var(--size-body)',
                                             cursor: 'pointer',
                                             alignSelf: 'center'
                                         }}
@@ -376,21 +379,21 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                         >
-                            <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 'var(--weight-bold)', marginBottom: '8px', textAlign: 'center' }}>
+                            <h1 style={{ fontSize: 'var(--size-page)', fontWeight: 'var(--weight-medium)', marginBottom: 'var(--space-2)', textAlign: 'center' }}>
                                 Sending mail
                             </h1>
                             <p style={{
-                                fontSize: 'var(--font-size-sm)',
-                                color: 'var(--color-text-muted)',
+                                fontSize: 'var(--size-body)',
+                                color: 'var(--text-3)',
                                 textAlign: 'center',
-                                marginBottom: '32px'
+                                marginBottom: 'var(--space-8)'
                             }}>
                                 Your name on sent mail, and where mail is sent from
                             </p>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 'var(--font-size-sm)', fontWeight: 500, marginBottom: '8px' }}>
+                                    <label style={{ display: 'block', fontSize: 'var(--size-body)', fontWeight: 500, marginBottom: 'var(--space-2)' }}>
                                         Your name
                                     </label>
                                     <input
@@ -400,19 +403,19 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                         placeholder={formData.email.split('@')[0]}
                                         style={{
                                             width: '100%',
-                                            padding: '8px 12px',
-                                            borderRadius: 'var(--radius-control)',
-                                            border: '1px solid var(--color-border)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            backgroundColor: 'var(--color-bg-subtle)',
-                                            color: 'var(--color-text-main)'
+                                            padding: 'var(--space-2) var(--space-3)',
+                                            borderRadius: 'var(--radius-2)',
+                                            border: '1px solid var(--line-1)',
+                                            fontSize: 'var(--size-body)',
+                                            backgroundColor: 'var(--surface-1)',
+                                            color: 'var(--text-1)'
                                         }}
                                     />
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-3)' }}>
                                     <div>
-                                        <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 500, marginBottom: '4px', color: 'var(--color-text-muted)' }}>
+                                        <label style={{ display: 'block', fontSize: 'var(--size-caption)', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-3)' }}>
                                             Outgoing mail server (SMTP)
                                         </label>
                                         <input
@@ -422,17 +425,17 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                             placeholder="smtp.example.com"
                                             style={{
                                                 width: '100%',
-                                                padding: '8px 12px',
-                                                borderRadius: 'var(--radius-control)',
-                                                border: '1px solid var(--color-border)',
-                                                fontSize: 'var(--font-size-sm)',
-                                                backgroundColor: 'var(--color-bg-subtle)',
-                                                color: 'var(--color-text-main)'
+                                                padding: 'var(--space-2) var(--space-3)',
+                                                borderRadius: 'var(--radius-2)',
+                                                border: '1px solid var(--line-1)',
+                                                fontSize: 'var(--size-body)',
+                                                backgroundColor: 'var(--surface-1)',
+                                                color: 'var(--text-1)'
                                             }}
                                         />
                                     </div>
                                     <div>
-                                        <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 500, marginBottom: '4px', color: 'var(--color-text-muted)' }}>
+                                        <label style={{ display: 'block', fontSize: 'var(--size-caption)', fontWeight: 500, marginBottom: 'var(--space-1)', color: 'var(--text-3)' }}>
                                             Port
                                         </label>
                                         <input
@@ -441,12 +444,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                             onChange={(e) => updateField('smtpPort', e.target.value)}
                                             style={{
                                                 width: '100%',
-                                                padding: '8px 12px',
-                                                borderRadius: 'var(--radius-control)',
-                                                border: '1px solid var(--color-border)',
-                                                fontSize: 'var(--font-size-sm)',
-                                                backgroundColor: 'var(--color-bg-subtle)',
-                                                color: 'var(--color-text-main)'
+                                                padding: 'var(--space-2) var(--space-3)',
+                                                borderRadius: 'var(--radius-2)',
+                                                border: '1px solid var(--line-1)',
+                                                fontSize: 'var(--size-body)',
+                                                backgroundColor: 'var(--surface-1)',
+                                                color: 'var(--text-1)'
                                             }}
                                         />
                                     </div>
@@ -455,11 +458,11 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '12px',
-                                    padding: '12px',
-                                    backgroundColor: 'var(--color-bg-subtle)',
-                                    borderRadius: 'var(--radius-control)',
-                                    border: '1px solid var(--color-border)'
+                                    gap: 'var(--space-3)',
+                                    padding: 'var(--space-3)',
+                                    backgroundColor: 'var(--surface-1)',
+                                    borderRadius: 'var(--radius-2)',
+                                    border: '1px solid var(--line-1)'
                                 }}>
                                     <input
                                         type="checkbox"
@@ -468,8 +471,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                         style={{ width: '16px', height: '16px' }}
                                     />
                                     <div>
-                                        <div style={{ fontSize: 'var(--font-size-sm)', fontWeight: 500 }}>Use SSL/TLS</div>
-                                        <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                                        <div style={{ fontSize: 'var(--size-body)', fontWeight: 500 }}>Use SSL/TLS</div>
+                                        <div style={{ fontSize: 'var(--size-caption)', color: 'var(--text-3)' }}>
                                             Usually port 465. Uncheck for STARTTLS (usually port 587). Your email password is used here too.
                                         </div>
                                     </div>
@@ -477,33 +480,33 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
 
                                 {error && (
                                     <div style={{
-                                        padding: '12px',
-                                        backgroundColor: 'var(--error-bg)',
-                                        border: '1px solid var(--error-border)',
-                                        borderRadius: 'var(--radius-control)',
-                                        color: 'var(--error-text)',
-                                        fontSize: 'var(--font-size-sm)',
+                                        padding: 'var(--space-3)',
+                                        backgroundColor: 'var(--danger-tint)',
+                                        border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
+                                        borderRadius: 'var(--radius-2)',
+                                        color: 'var(--danger)',
+                                        fontSize: 'var(--size-body)',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px'
+                                        gap: 'var(--space-2)'
                                     }}>
                                         <AlertCircle size={16} />
                                         {error}
                                     </div>
                                 )}
 
-                                <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+                                <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>
                                     <button
                                         onClick={() => setStep(1)}
                                         style={{
                                             flex: 1,
-                                            padding: '12px',
+                                            padding: 'var(--space-3)',
                                             backgroundColor: 'transparent',
-                                            color: 'var(--color-text-main)',
-                                            border: '1px solid var(--color-border)',
-                                            borderRadius: 'var(--radius-control)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            fontWeight: 'var(--weight-semibold)',
+                                            color: 'var(--text-1)',
+                                            border: '1px solid var(--line-1)',
+                                            borderRadius: 'var(--radius-2)',
+                                            fontSize: 'var(--size-body)',
+                                            fontWeight: 'var(--weight-medium)',
                                             cursor: 'pointer'
                                         }}
                                     >
@@ -514,18 +517,18 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                         disabled={submitting}
                                         style={{
                                             flex: 1,
-                                            padding: '12px',
-                                            backgroundColor: 'var(--color-action)',
-                                            color: 'var(--color-on-action)',
+                                            padding: 'var(--space-3)',
+                                            backgroundColor: 'var(--action)',
+                                            color: 'var(--on-action)',
                                             border: 'none',
-                                            borderRadius: 'var(--radius-control)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            fontWeight: 'var(--weight-semibold)',
+                                            borderRadius: 'var(--radius-2)',
+                                            fontSize: 'var(--size-body)',
+                                            fontWeight: 'var(--weight-medium)',
                                             cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            gap: '8px'
+                                            gap: 'var(--space-2)'
                                         }}
                                     >
                                         {submitting ? (
@@ -552,21 +555,21 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                         >
-                            <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 'var(--weight-bold)', marginBottom: '8px', textAlign: 'center' }}>
+                            <h1 style={{ fontSize: 'var(--size-page)', fontWeight: 'var(--weight-medium)', marginBottom: 'var(--space-2)', textAlign: 'center' }}>
                                 Secure your Electronic Mail
                             </h1>
                             <p style={{
-                                fontSize: 'var(--font-size-sm)',
-                                color: 'var(--color-text-muted)',
+                                fontSize: 'var(--size-body)',
+                                color: 'var(--text-3)',
                                 textAlign: 'center',
-                                marginBottom: '32px'
+                                marginBottom: 'var(--space-8)'
                             }}>
                                 Create a password to access your electronic mail on the web
                             </p>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 'var(--font-size-sm)', fontWeight: 500, marginBottom: '8px' }}>
+                                    <label style={{ display: 'block', fontSize: 'var(--size-body)', fontWeight: 500, marginBottom: 'var(--space-2)' }}>
                                         Web access password
                                     </label>
                                     <input
@@ -577,48 +580,48 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                         autoFocus
                                         style={{
                                             width: '100%',
-                                            padding: '8px 12px',
-                                            borderRadius: 'var(--radius-control)',
-                                            border: '1px solid var(--color-border)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            backgroundColor: 'var(--color-bg-subtle)',
-                                            color: 'var(--color-text-main)'
+                                            padding: 'var(--space-2) var(--space-3)',
+                                            borderRadius: 'var(--radius-2)',
+                                            border: '1px solid var(--line-1)',
+                                            fontSize: 'var(--size-body)',
+                                            backgroundColor: 'var(--surface-1)',
+                                            color: 'var(--text-1)'
                                         }}
                                     />
-                                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginTop: '8px', lineHeight: '1.4' }}>
+                                    <div style={{ fontSize: 'var(--size-caption)', color: 'var(--text-3)', marginTop: 'var(--space-2)', lineHeight: '1.4' }}>
                                         This is separate from your provider password. Use this password to read your electronic mail from any browser.
                                     </div>
                                 </div>
 
                                 {error && (
                                     <div style={{
-                                        padding: '12px',
-                                        backgroundColor: 'var(--error-bg)',
-                                        border: '1px solid var(--error-border)',
-                                        borderRadius: 'var(--radius-control)',
-                                        color: 'var(--error-text)',
-                                        fontSize: 'var(--font-size-sm)',
+                                        padding: 'var(--space-3)',
+                                        backgroundColor: 'var(--danger-tint)',
+                                        border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
+                                        borderRadius: 'var(--radius-2)',
+                                        color: 'var(--danger)',
+                                        fontSize: 'var(--size-body)',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px'
+                                        gap: 'var(--space-2)'
                                     }}>
                                         <AlertCircle size={16} />
                                         {error}
                                     </div>
                                 )}
 
-                                <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                                <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
                                     <button
                                         onClick={() => setStep(2)}
                                         style={{
                                             flex: 1,
-                                            padding: '12px',
+                                            padding: 'var(--space-3)',
                                             backgroundColor: 'transparent',
-                                            color: 'var(--color-text-main)',
-                                            border: '1px solid var(--color-border)',
-                                            borderRadius: 'var(--radius-control)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            fontWeight: 'var(--weight-semibold)',
+                                            color: 'var(--text-1)',
+                                            border: '1px solid var(--line-1)',
+                                            borderRadius: 'var(--radius-2)',
+                                            fontSize: 'var(--size-body)',
+                                            fontWeight: 'var(--weight-medium)',
                                             cursor: 'pointer'
                                         }}
                                     >
@@ -629,18 +632,18 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                         disabled={submitting}
                                         style={{
                                             flex: 1,
-                                            padding: '12px',
-                                            backgroundColor: 'var(--color-action)',
-                                            color: 'var(--color-on-action)',
+                                            padding: 'var(--space-3)',
+                                            backgroundColor: 'var(--action)',
+                                            color: 'var(--on-action)',
                                             border: 'none',
-                                            borderRadius: 'var(--radius-control)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            fontWeight: 'var(--weight-semibold)',
+                                            borderRadius: 'var(--radius-2)',
+                                            fontSize: 'var(--size-body)',
+                                            fontWeight: 'var(--weight-medium)',
                                             cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            gap: '8px'
+                                            gap: 'var(--space-2)'
                                         }}
                                     >
                                         {submitting ? (
@@ -671,40 +674,40 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                             <div style={{
                                 width: '64px',
                                 height: '64px',
-                                backgroundColor: 'var(--success-bg)',
-                                color: 'var(--color-success)',
-                                borderRadius: '50%',
+                                backgroundColor: 'color-mix(in srgb, var(--success) 12%, transparent)',
+                                color: 'var(--success)',
+                                borderRadius: 'var(--radius-full)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                margin: '0 auto 24px auto'
+                                margin: '0 auto var(--space-6) auto'
                             }}>
                                 <Check size={32} />
                             </div>
 
-                            <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 'var(--weight-bold)', marginBottom: '8px' }}>
+                            <h1 style={{ fontSize: 'var(--size-page)', fontWeight: 'var(--weight-medium)', marginBottom: 'var(--space-2)' }}>
                                 All set!
                             </h1>
                             <p style={{
-                                fontSize: 'var(--font-size-sm)',
-                                color: 'var(--color-text-muted)',
-                                marginBottom: '32px'
+                                fontSize: 'var(--size-body)',
+                                color: 'var(--text-3)',
+                                marginBottom: 'var(--space-8)'
                             }}>
                                 Okay, let's access your inbox.
                             </p>
 
                             {error && (
                                 <div style={{
-                                    padding: '12px',
-                                    backgroundColor: 'var(--error-bg)',
-                                    border: '1px solid var(--error-border)',
-                                    borderRadius: 'var(--radius-control)',
-                                    color: 'var(--error-text)',
-                                    fontSize: 'var(--font-size-sm)',
-                                    marginBottom: '20px',
+                                    padding: 'var(--space-3)',
+                                    backgroundColor: 'var(--danger-tint)',
+                                    border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
+                                    borderRadius: 'var(--radius-2)',
+                                    color: 'var(--danger)',
+                                    fontSize: 'var(--size-body)',
+                                    marginBottom: 'var(--space-5)',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px',
+                                    gap: 'var(--space-2)',
                                     justifyContent: 'center'
                                 }}>
                                     <AlertCircle size={16} />
@@ -716,18 +719,18 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete, isNewAccou
                                 onClick={onComplete}
                                 style={{
                                     width: '100%',
-                                    padding: '12px',
-                                    backgroundColor: 'var(--color-action)',
-                                    color: 'var(--color-on-action)',
+                                    padding: 'var(--space-3)',
+                                    backgroundColor: 'var(--action)',
+                                    color: 'var(--on-action)',
                                     border: 'none',
-                                    borderRadius: 'var(--radius-control)',
-                                    fontSize: 'var(--font-size-sm)',
-                                    fontWeight: 'var(--weight-semibold)',
+                                    borderRadius: 'var(--radius-2)',
+                                    fontSize: 'var(--size-body)',
+                                    fontWeight: 'var(--weight-medium)',
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '8px'
+                                    gap: 'var(--space-2)'
                                 }}
                             >
                                 {isNewAccount ? 'Close' : 'Go to Inbox'}

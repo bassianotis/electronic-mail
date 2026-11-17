@@ -1,286 +1,32 @@
+/* Mail's own tokens, on top of design system v2's (styles/tokens.css, imported first). Components
+   read the role tokens directly (rule V2); these are only what Mail still needs of its own. */
 :root {
-    /* The browser draws its own parts (fields, scrollbars, checkboxes) dark too */
-    color-scheme: dark;
-    accent-color: var(--color-text-main);
-    /* Core palette */
-    --color-bg: #141415;
-    --color-bg-subtle: var(--surface-card);
-    --color-text-main: #ededed;
-    --color-text-muted: #a1a1a6;
-    --color-primary: var(--color-text-main);
-    /* Added: maps to text-main for a sleek, dark-navy primary */
-    --color-border: rgba(237, 237, 237, 0.08);
+    /* The browser's own parts (checkboxes, radios) in the interface's text colour */
+    accent-color: var(--text-1);
 
-    /* Accent Colors - Vibrant & Distinct */
-    --color-accent-primary: #2ecc71;
-    /* Fresh Green */
-    --color-accent-secondary: #3498db;
-    /* Sky Blue */
-    --color-accent-tertiary: #e67e22;
-    /* Warm Orange */
-    --color-accent-quaternary: #9b59b6;
-    /* Soft Purple */
+    /* The six interface sizes, size only. The --type-* tokens also set a line height; text that
+       keeps its own line height takes its size from here. */
+    --size-caption: 12px;
+    --size-small: 13px;
+    --size-body: 14px;
+    --size-large: 16px;
+    --size-title: 18px;
+    --size-page: 24px;
+    --size-wordmark: 20px; /* the app name in the top bar only */
 
-    /* Semantic Colors */
-    --color-success: #6fb390;
-    --color-warning: #f1c40f;
-    --color-danger: #e0716a;
-    --color-danger-hover: #e8877f;
-    --color-action: #cf9f52;
-    /* The one primary action colour: Compose, Send, Save, Log in, Next, Got it */
-    --success-bg: rgba(111, 179, 144, 0.12);
-    --toast-success-icon: #6fb390;
-    /* The check on the navy notice (the success green would be too dark there) */
+    --scrollbar-thumb: #666666; /* Reader's scrollbar */
 
-    /* Spacing - Generous Whitespace */
-    --space-xs: 4px;
-    --space-sm: 8px;
-    --space-md: 16px;
-    --space-lg: 24px;
-    --space-xl: 32px;
-    --space-2xl: 48px;
-    --space-3xl: 64px;
-
-    /* Typography */
-    --font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    --font-size-sm: 0.875rem;
-    --font-size-base: 1rem;
-    --font-size-lg: 1.125rem;
-    --font-size-xl: 1.25rem;
-    --font-size-2xl: 1.5rem;
-
-    /* Shadows - Soft & Lifted */
-    --shadow-sm: none;
-    --shadow-md: none;
-    --shadow-lg: none;
-    --shadow-floating: none;
-
-    /* Radius */
-    --radius-sm: 6px;
-    --radius-md: 8px;
-    --radius-lg: 8px;
-    --radius-full: 9999px;
-
-    /* The rest of the Electronic Mail v1 design system's tokens, under its names, so components
-       read every colour from here. Values are exactly what the components used inline. */
-    --color-bg-hover: #28282b;
-    --font-size-xs: 0.75rem;
-    --font-size-2xs: 0.625rem;
-
-    /* Surfaces and overlays */
-    --surface-card: #19191b;
-    --overlay-scrim: rgba(5, 6, 8, 0.6);
-    --dock-glass: var(--surface-card);
-    --glass-border: rgba(237, 237, 237, 0.13);
-    --modal-scrim: var(--overlay-scrim);
-    --tour-scrim: var(--overlay-scrim);
-    --message-veil: rgba(35, 35, 37, 0.9);
-    --hover-tint: rgba(255, 255, 255, 0.05);
-
-    /* Pills, badges and actions */
-    --thread-badge: transparent;
-    --pill-bg: rgba(255, 255, 255, 0.05);
-    --pill-border: rgba(237, 237, 237, 0.13);
-    --pill-text: var(--color-text-main);
-    /* Deprecated: use --color-action */
-    --send-disabled: #2c2c2f;
-    /* Deprecated: use --color-action */
-    --badge-red: var(--color-danger);
-    --menu-danger-hover: rgba(224, 113, 106, 0.12);
-
-    /* Notices */
-    --toast-bg: var(--surface-raised);
-    --toast-error-bg: #2a1817;
-    --toast-error-icon: #e0716a;
-    --toast-action-bg: rgba(255, 255, 255, 0.04);
-    --toast-dismiss: var(--color-text-muted);
-
-    /* Text */
-    --message-text: #d6d6d9;
-    /* Links and quote bars in mail shown in the theme: in the text colour, never the accent */
-    --message-link: var(--color-text-main);
-    --link-underline: rgba(237, 237, 237, 0.4);
-    --quote-bar: var(--border-strong);
-    --status-text: var(--color-text-muted);
-    --color-on-accent: #ffffff;
-
-    /* Reader mode */
-    --reader-bg: var(--surface-card);
-    --reader-text: var(--message-text);
-    --reader-muted: var(--color-text-muted);
-    --reader-rule: rgba(237, 237, 237, 0.13);
-    --reader-link: var(--color-text-main);
-    --reader-link-underline: var(--link-underline);
-    --reader-quote-bar: var(--border-strong);
-
-    /* Status notes and boxes */
-    --note-warn-bg: color-mix(in srgb, var(--color-action) 10%, transparent);
-    --note-warn-text: var(--color-action);
-    --note-warn-border: color-mix(in srgb, var(--color-action) 30%, transparent);
-    --draft-bg: transparent;
-    --draft-text: var(--color-action);
-    --error-bg: rgba(224, 113, 106, 0.10);
-    --error-text: var(--color-danger);
-    --error-border: rgba(224, 113, 106, 0.30);
-
-    /* Bucket palette: the New Bucket swatches (a bucket's colour is saved on the server as hex) */
-    --bucket-red: #ff3b30;
-    --bucket-orange: var(--color-accent-tertiary);
-    --bucket-yellow: var(--color-warning);
-    --bucket-green: var(--color-accent-primary);
-    --bucket-blue: var(--color-accent-secondary);
-    --bucket-purple: var(--color-accent-quaternary);
-    --bucket-gray: #95a5a6;
-    --bucket-dark: #2c3e50;
-
-    /* More shadows */
-    --shadow-lift: none;
-    --shadow-panel: 0 14px 40px rgba(0, 0, 0, 0.5);
-    --shadow-message-front: 0 0 0 1px rgba(237, 237, 237, 0.13);
-    --shadow-message-back: 0 0 0 1px rgba(237, 237, 237, 0.08);
-    --shadow-tour: 0 14px 40px rgba(0, 0, 0, 0.5);
-    --shadow-send: none;
-    --shadow-menu: 0 14px 40px rgba(0, 0, 0, 0.5);
-    --shadow-selected: none;
-
-    /* More radii (recorded only: components still write these inline) */
-    --radius-control: 6px;
-    --radius-tile: var(--radius-md);
-
-    /* Backdrop blur */
-    --blur-overlay: 0px;
-    --blur-control: 0px;
-    --blur-modal: var(--blur-overlay);
-
-    /* Motion (unslop round 1): one curve, three durations (utils/motion.ts has the same) */
-    --ease: cubic-bezier(0.22, 1, 0.36, 1);
-    --dur-fast: 150ms;
-    /* hover, press, toggles */
-    --dur-mid: 200ms;
-    /* menus, popovers, notices */
-    --dur-slow: 350ms;
-    /* entrances, sheets, layout changes */
-
-    /* Seams: what the look needs beyond the tokens above */
-    --surface-raised: #232325;
-    /* the reading card, composer, corner window, menus, dialogs, notices, reading bar */
-    --border-strong: rgba(237, 237, 237, 0.13);
-    --color-text-faint: #8e8e94; /* 4.5:1 or better on every surface, raised and hover included */
-    /* dates, previews, help lines */
-    --sender-text: var(--color-text-muted);
-    --color-on-success: #0e1712;
-    --color-on-action: #17110a;
-    /* text on --color-action (Send, Save, Log in) */
-    --rail-bg: #0f0f10;
-    --rail-edge: transparent;
-    --radius-pill: 6px;
-    /* pill-shaped bars and buttons (real circles keep --radius-full) */
-    --weight-semibold: 500;
-    --weight-bold: 500;
-    --label-case: none;
-    --label-tracking: normal;
-    --date-numerals: tabular-nums;
-    --tag-bg: transparent;
-    --tag-border: transparent;
-    --tag-text: var(--color-text-faint);
-    --tag-pad: 0;
-    /* Up next's tags ("Today", a bucket's name) and counts */
-    --thread-badge-text: var(--color-text-faint);
-    --thread-badge-pad: 0;
-    --draft-pad: 0;
-    --draft-icon: none;
-    --draft-ring: none;
-    --draft-ring-border: var(--color-action);
-    --toast-text: var(--color-text-main);
-    --toast-border: 1px solid rgba(237, 237, 237, 0.13);
-    --toast-action-border: 1px solid rgba(237, 237, 237, 0.13);
-    --compose-bg: var(--surface-raised);
-    --compose-text: var(--color-text-main);
-    --compose-border: 1px solid rgba(237, 237, 237, 0.13);
-    --compose-icon: var(--color-action);
-    --compose-hover: var(--color-bg-hover);
-    /* a bucket or Archive card under the pointer (a colour change, never a lift) */
-    --card-hover-border: var(--border-strong);
-    /* an emoji with no line icon yet shows greyscale until one is picked */
-    --shadow-dialog: 0 14px 40px rgba(0, 0, 0, 0.5);
-    --surface-header: var(--surface-raised);
-    /* the corner window's title strip */
-    --selected-bg: var(--surface-raised);
-    --selected-border: var(--border-strong);
-    --selected-text: var(--color-text-main);
-    --selected-subtext: var(--color-text-muted);
-    --unselected-text: var(--color-text-muted); /* so the darker wells don't read as pressed */
-    /* the picked option of a choice in Settings */
-    --color-on-danger: #1a0b0a;
-    --send-disabled-text: var(--color-text-muted);
-    --view-thread-bg: transparent;
-    --view-thread-border: transparent;
-    --view-thread-text: var(--color-text-faint);
-    --view-thread-hover-bg: transparent;
-    --view-thread-hover-text: var(--color-text-main);
-    --archive-button-bg: var(--surface-raised);
-    --archive-button-text: var(--color-text-main);
-    --archive-button-border: 1px solid rgba(237, 237, 237, 0.13);
-    --archive-button-icon: #6fb390;
-    --quick-archive-icon: #6fb390;
-    /* the box between an opened Inbox card and the email inside it */
-    --opened-body-pad: 0;
-    --opened-body-bg: transparent;
-    --opened-body-border: none;
-    --attach-border: 1px solid transparent;
-    --attach-bg: transparent;
-    --swatch-filter: saturate(0.6) brightness(0.9);
-    --dialog-edge: rgba(237, 237, 237, 0.13);
-
-    /* Sizes, in one place (the trial's size switch is gone; these are today's) */
-    --size-app-name: var(--font-size-xl);
-    --size-page-heading: var(--font-size-2xl);
-    --size-card-title: var(--font-size-lg);
-    --size-list-title: var(--font-size-base);
-    --size-sender-line: var(--font-size-sm);
-    --size-list-sender: 1em;
-    --size-date: 1em;
-    --size-list-date: var(--font-size-xs);
-    --size-preview: var(--font-size-sm);
-    --size-upnext-title: var(--font-size-sm);
-    --card-pad: var(--space-lg);
-    --card-gap: var(--space-md);
-    --swatch-size: 32px;
-    --input-bg: var(--surface-card);
-    --input-text: var(--color-text-main);
-    /* text fields that kept the browser's own colours */
-    /* dialogs and menus that float over the page */
-    --shadow-corner: 0 14px 40px rgba(0, 0, 0, 0.5);
-    --shadow-corner-lifted: 0 14px 40px rgba(0, 0, 0, 0.5);
-    --bar-bg: var(--surface-raised);
-    /* the bar under a conversation's cards */
-    --drag-handle: rgba(255, 255, 255, 0.22);
-    --drag-handle-shadow: none;
-    /* Email bodies: designed mail sits on "paper", a dimmed white sheet under a warm lamp */
+    /* Email bodies: designed mail sits on "paper", a dimmed white sheet under a warm lamp. The mail
+       frame reads these (it's another origin, so it can't read variables itself) */
     --paper-bg: #ffffff;
     --paper-text: #333333;
     --paper-filter: brightness(0.86) sepia(0.14) saturate(0.92);
-    --paper-pad: 16px 20px;
-    --paper-radius: 4px;
+    --paper-pad: var(--space-4) var(--space-5);
+    --paper-radius: var(--radius-1);
     --paper-width: 100%; /* the card's full width; the email sits centred on it (owner, 2026-11-10) */
     --paper-min-width: 0px;
-    --paper-margin: 4px auto 20px; /* 20px under the header (with the body's 16px), 24px at the sides */
-    --paper-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-
-    /* Dark ("Instrument A, Quiet") has these tokens of its own */
-    /* a thread's other messages: two slivers below its card (lighter than the card, or they don't show) */
-    --stack-near: #212123;
-    --stack-far: #1d1d1f;
-    --bucket-title: var(--color-text-main);
-
-    /* Reading view navigation (reading-navigation-spec.md, 2026-11-10) */
-    --stack-edge-bg: #2a2a2d;                    /* the older messages' edges behind the card */
-    --stack-edge-border: rgba(237, 237, 237, 0.16);
-    --tree-guide: rgba(237, 237, 237, 0.16);     /* the thread tree's guide lines */
-    --tree-current-bg: #2e2e31;                  /* the open message's row */
-    --tree-current-ring: rgba(237, 237, 237, 0.16);
-    --band-note-bg: #1d1d1f;                     /* "Not the message you're replying to" */
-    --tip-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --paper-margin: var(--space-1) auto var(--space-5); /* 20px under the header (with the body's 16px), 24px at the sides */
+    --paper-shadow: var(--shadow-raised);
 }
 
 /* Up next's row scrolls without the browser's grey bar; a thin dark thumb shows while it's hovered.
@@ -291,7 +37,7 @@
 }
 
 .upnext-row:hover {
-    border-color: #2a2b30;
+    border-color: var(--fill-selected);
 }
 
 .upnext-row::-webkit-scrollbar {
@@ -302,45 +48,48 @@
 .upnext-row::-webkit-scrollbar-thumb {
     border: 3px solid;
     border-color: inherit;
-    border-radius: 3px;
+    border-radius: var(--radius-1);
     background: transparent;
 }
 
-/* No browser blue. Focus rings, selected text and autofilled fields use the theme's colours */
-:focus-visible {
-    outline: 2px solid var(--color-action);
-    outline-offset: 1px;
-}
-
+/* No browser blue. Selected text and autofilled fields use the theme's colours; the focus ring is
+   the tokens' (styles/tokens.css: 2px amber, 1px gap) */
 ::selection {
-    background: color-mix(in srgb, var(--color-action) 35%, transparent);
+    background: color-mix(in srgb, var(--action) 35%, transparent);
 }
 
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-    -webkit-text-fill-color: var(--color-text-main);
-    -webkit-box-shadow: 0 0 0 1000px var(--color-bg-subtle) inset;
-    caret-color: var(--color-text-main);
+    -webkit-text-fill-color: var(--text-1);
+    -webkit-box-shadow: 0 0 0 1000px var(--surface-1) inset;
+    caret-color: var(--text-1);
+}
+
+/* Focus rings drawn inside where a container would clip them (rule K3): the dock's rows (the strip
+   scrolls sideways) and the thread tree's rows (as wide as their panel); the older / newer pair is
+   the shared ButtonPair, which draws its own inside. A drop target's 1px ring is inline. */
+.dock-row:focus-visible,
+.em-tree-row:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--focus-ring) !important;
 }
 
 /* The dock's slim bar (BucketsDock): a row's fill on hover */
 .dock-row:hover {
-    background: var(--color-bg-hover);
+    background: var(--fill-hover);
 }
 
 /* Edit bucket's icon picker: a cell's fill on hover */
 .icon-cell:hover {
-    background: var(--color-bg-hover) !important;
-    color: var(--color-text-main) !important;
+    background: var(--fill-hover) !important;
+    color: var(--text-1) !important;
 }
 
-/* Icons: one set (lucide) at one stroke (the attribute each icon sets is overridden here) */
-.lucide {
-    stroke-width: 1.5;
-}
+/* Icons: one set (lucide) at one stroke, 1.5 (--icon-stroke): the rule is in styles/tokens.css,
+   for every app in the family; it overrides the attribute each icon sets */
 
-/* Loading spinners: the Loader icon with className="animate-spin" */
+/* Loading spinners: the LoaderCircle icon with className="animate-spin" */
 @keyframes spin {
     to {
         transform: rotate(360deg);
@@ -351,7 +100,7 @@ input:-webkit-autofill:focus {
     animation: spin 1s linear infinite;
 }
 
-/* Skeletons (Loading/Skeletons.tsx): shapes in the real component's frame, pulsing while they wait */
+/* Skeletons (Loading/Skeletons.tsx): still shapes in the real component's frame (rule T7: no shimmer) */
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
@@ -363,22 +112,20 @@ input:-webkit-autofill:focus {
 
 .skeleton-bone {
     display: block;
-    background-color: var(--color-border);
+    background-color: var(--line-1);
     border-radius: var(--radius-full);
-    animation: pulse 1.6s ease-in-out infinite;
 }
 
 /* The first sync's pulsing dot, beside the Inbox heading */
 .sync-dot {
     width: 8px;
     height: 8px;
-    border-radius: 50%;
-    background-color: var(--color-action);
+    border-radius: var(--radius-full);
+    background-color: var(--action);
     animation: pulse 1.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .skeleton-bone,
     .sync-dot {
         animation: none;
     }
@@ -396,16 +143,25 @@ html {
 }
 
 body {
-    font-family: var(--font-family);
-    background-color: var(--color-bg);
-    color: var(--color-text-main);
+    font-family: var(--font-ui);
+    background-color: var(--bg-page);
+    color: var(--text-1);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
+/* Buttons and fields take the page's font (family, size, weight), never the browser's 13.33px; a size
+   set on one still wins. Their line height stays their own, as before: the page's 1.5 made them taller */
+button,
+input,
+select,
+textarea {
+    font: inherit;
+    line-height: normal;
+}
+
 button {
-    font-family: inherit;
     cursor: pointer;
     border: none;
     background: none;
@@ -415,29 +171,23 @@ button {
 .container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 0 var(--space-lg);
-}
-
-.flex-center {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 0 var(--space-6);
 }
 
 .text-muted {
-    color: var(--color-text-muted);
+    color: var(--text-3);
 }
 
 /* A thread's other messages: two fill-only slivers peeking below its card (shadows, which the
    card's own overflow doesn't clip) */
 .thread-stack {
     isolation: isolate;
-    margin-bottom: 8px;
-    box-shadow: 0 12px 0 -8px var(--stack-near), 0 24px 0 -16px var(--stack-far) !important; /* 8px and 16px in, 4px each below */
+    margin-bottom: var(--space-2);
+    box-shadow: 0 12px 0 -8px var(--sliver-near), 0 24px 0 -16px var(--sliver-far) !important; /* 8px and 16px in, 4px each below */
 }
 
 .thread-stack-pair {
-    box-shadow: 0 12px 0 -8px var(--stack-near) !important;
+    box-shadow: 0 12px 0 -8px var(--sliver-near) !important;
 }
 
 /* Up next: the slivers hang into the strip's bottom padding; every card keeps the slot's height */
@@ -455,36 +205,13 @@ button {
     position: fixed;
     top: 0;
     right: 0;
-    z-index: 350;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 0 24px;
-    background: var(--surface-raised);
-    border-bottom: 1px solid var(--border-strong);
-    font-size: 13.5px;
-}
-
-.server-banner-try {
-    margin-left: auto;
-    height: 28px;
-    padding: 0 12px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-control);
-    background: var(--surface-card);
-    color: var(--color-text-main);
-    font-size: 13px;
-    transition: background-color var(--dur-fast) var(--ease);
-}
-
-.server-banner-try:hover {
-    background: var(--color-bg-hover);
+    z-index: var(--layer-chrome);
 }
 
 /* Only while the band shows: a transform (even translateY(0)) would make fixed elements inside, like
    a dragged card, position against the page instead of the window */
 .below-server-banner {
-    transition: transform var(--dur-mid) var(--ease);
+    transition: transform var(--dur-base) var(--ease-in);
 }
 
 :root[data-server-banner] .below-server-banner {
@@ -493,13 +220,13 @@ button {
 
 /* An action that needs the server, while it can't be reached */
 .needs-server:disabled {
-    opacity: 0.45;
+    opacity: var(--disabled-opacity);
     cursor: default;
 }
 
 /* The reading layer (fixed, under the band's top) moves with the page, at the same pace */
 .reading-layer {
-    transition: top var(--dur-mid) var(--ease);
+    transition: top var(--dur-base) var(--ease-in);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -513,60 +240,60 @@ button {
 .images-strip {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     height: 40px;
     flex-shrink: 0;
     box-sizing: border-box;
-    padding: 0 24px;
-    background: var(--surface-card);
-    border-bottom: 1px solid var(--color-border);
-    font-size: 13.5px;
-    color: var(--color-text-muted);
+    padding: 0 var(--space-6);
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--line-1);
+    font-size: var(--size-small);
+    color: var(--text-3);
 }
 
 /* Inside an Inbox card (already the card surface): a rounded row above the body */
 .images-strip-inline {
-    padding: 0 16px;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-control);
+    padding: 0 var(--space-4);
+    background: var(--bg-page);
+    border: 1px solid var(--line-1);
+    border-radius: var(--radius-2);
 }
 
 .images-strip-load {
-    padding: 4px 6px;
+    padding: var(--space-1) 6px;
     margin-left: -6px;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--radius-1);
     background: none;
-    color: var(--color-text-main);
-    font-size: 13.5px;
+    color: var(--text-1);
+    font-size: var(--size-small);
     font-weight: 500;
-    transition: background-color var(--dur-fast) var(--ease);
+    transition: background-color var(--dur-instant) var(--ease-in);
 }
 
 .images-strip-load:hover:not(:disabled) {
-    background: var(--color-bg-hover);
+    background: var(--fill-hover);
 }
 
 .images-strip-load:disabled {
-    color: var(--color-text-faint);
+    color: var(--text-4);
     opacity: 1;
 }
 
 /* After loading: the strip stays, quieter, so images showing is never a mystery */
 .images-strip-loaded {
-    color: var(--color-text-faint);
+    color: var(--text-4);
 }
 
 /* Signed out while using Mail (SignedOutDialog.tsx): over everything, on a darker scrim */
 .signed-out-scrim {
     position: fixed;
     inset: 0;
-    z-index: 20000;
+    z-index: var(--layer-critical);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(6, 6, 7, 0.72);
+    background: var(--scrim);
 }
 
 .signed-out-dialog {
@@ -575,57 +302,68 @@ button {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 24px;
+    gap: var(--space-4);
+    padding: var(--space-6);
     background: var(--surface-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-    color: var(--color-text-main);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-3);
+    box-shadow: var(--shadow-overlay);
+    color: var(--text-1);
 }
 
 .signed-out-dialog h2 {
     margin: 0;
-    font-size: 17px;
+    font-size: var(--size-title);
     font-weight: 500;
 }
 
 .signed-out-dialog p {
     margin: 0;
-    font-size: 14.5px;
+    font-size: var(--size-body);
     line-height: 1.6;
-    color: var(--color-text-muted);
-}
-
-.signed-out-button {
-    height: 40px;
-    border: 0;
-    border-radius: var(--radius-control);
-    background: var(--color-action);
-    color: var(--color-on-action);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
+    color: var(--text-3);
 }
 
 .signed-out-caption {
-    font-size: 13px;
-    color: var(--color-text-faint);
+    font-size: var(--size-small);
+    color: var(--text-4);
 }
 
 /* Bucket and Archive cards on hover: the border steps up (no lift) */
 .em-card {
-    transition: border-color var(--dur-fast) var(--ease);
+    transition: border-color var(--dur-instant) var(--ease-in);
 }
 
 .em-card:hover {
-    border-color: var(--card-hover-border) !important;
+    border-color: var(--line-2) !important;
+}
+
+/* A layer that takes the focus itself as it opens (a thread: utils/layers.ts) is a place, not a
+   control: no ring round it; Tab goes on to its controls, which have theirs */
+[data-layer]:focus {
+    outline: none;
+}
+
+/* A card's subject is a link to its thread (Views/ThreadLink.tsx, rule K1): it looks like the subject,
+   and the focus ring goes round the whole card, as the card is what opens */
+.em-thread-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.em-thread-link:focus-visible {
+    outline: none;
+}
+
+[data-thread-card]:has(.em-thread-link:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
 }
 
 /* Up next: a card's quick Archive shows on hover and on keyboard focus within the card */
 .upnext-card .upnext-archive {
     opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease);
+    transition: opacity var(--dur-instant) var(--ease-in);
 }
 
 .upnext-card:hover .upnext-archive,
@@ -633,50 +371,39 @@ button {
     opacity: 1;
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .upnext-card .upnext-archive {
-        transition: none;
-    }
-}
-
 /* A recipient chip with an address that won't send, when Send has taken the focus to it */
 [data-invalid-recipient]:focus {
-    outline: 2px solid var(--color-danger);
+    outline: 2px solid var(--danger);
     outline-offset: 1px;
-}
-
-/* Older / newer in a conversation's front card (Views/MessageCard.tsx) */
-.thread-nav button:not([aria-disabled="true"]):hover {
-    background: var(--color-bg-subtle);
 }
 
 /* The account rail's tabs (Layout/AccountRail.tsx): a shade darker than the page, no edge line;
    every tab is 32 wide and none moves; the open account is a 2px amber bar on its inner edge */
 .account-tab {
     writing-mode: vertical-rl;
-    font-size: var(--font-size-sm);
+    font-size: var(--size-body);
     font-weight: 600;
     white-space: nowrap;
-    padding: 16px 0;
+    padding: var(--space-4) 0;
     width: 32px;
     transform: none;
     border: 1px solid transparent;
-    border-radius: var(--radius-control) 0 0 var(--radius-control);
+    border-radius: var(--radius-2) 0 0 var(--radius-2);
     background: transparent;
-    color: var(--color-text-muted);
-    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+    color: var(--text-3);
+    transition: background-color var(--dur-instant) var(--ease-in), color var(--dur-instant) var(--ease-in), transform var(--dur-instant) var(--ease-in), border-color var(--dur-instant) var(--ease-in), box-shadow var(--dur-instant) var(--ease-in);
 }
 
 .account-tab:hover {
-    color: var(--color-text-main);
+    color: var(--text-1);
 }
 
 .account-tab[aria-selected="true"] {
     background: transparent;
-    color: var(--color-text-main);
+    color: var(--text-1);
     border-color: transparent;
     border-radius: 0;
-    box-shadow: inset -2px 0 0 var(--color-action);
+    box-shadow: inset -2px 0 0 var(--action);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -691,26 +418,22 @@ button {
 }
 
 .reader-scroll-container::-webkit-scrollbar-track {
-    background: var(--reader-bg);
+    background: var(--surface-1);
 }
 
 .reader-scroll-container::-webkit-scrollbar-thumb {
-    background-color: #666;
-    border-radius: 6px;
-    border: 3px solid var(--reader-bg);
+    background-color: var(--scrollbar-thumb);
+    border-radius: var(--radius-2);
+    border: 3px solid var(--surface-1);
 }
 
 .reader-scroll-container::-webkit-scrollbar-thumb:hover {
-    background-color: #888;
+    background-color: var(--text-4);
 }
 
 /* Explore 2: small round icon buttons and the buttons inside pills show a tint on hover */
 .em-icon-button:hover {
-    background: var(--color-bg-subtle) !important;
-}
-
-.em-pill-button:hover {
-    background: var(--hover-tint) !important;
+    background: var(--surface-1) !important;
 }
 
 /* The error screen (ErrorBoundary): the theme's page, text and button */
@@ -720,104 +443,66 @@ button {
     align-items: center;
     justify-content: center;
     height: 100vh;
-    padding: 20px;
-    background-color: var(--color-bg);
-    color: var(--color-text-main);
+    padding: var(--space-5);
+    background-color: var(--bg-page);
+    color: var(--text-1);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .crash-title {
-    font-size: 24px;
-    font-weight: var(--weight-semibold);
-    margin-bottom: 16px;
-    color: var(--color-danger);
+    font-size: var(--size-page);
+    font-weight: var(--weight-medium);
+    margin-bottom: var(--space-4);
+    color: var(--danger);
 }
 
 .crash-detail {
-    padding: 16px;
-    background-color: var(--surface-card);
-    border-radius: 8px;
-    border: 1px solid var(--color-border);
-    color: var(--color-text-muted);
-    margin-bottom: 24px;
+    padding: var(--space-4);
+    background-color: var(--surface-1);
+    border-radius: var(--radius-3);
+    border: 1px solid var(--line-1);
+    color: var(--text-3);
+    margin-bottom: var(--space-6);
     max-width: 600px;
     width: 100%;
     overflow: auto;
     max-height: 200px;
     font-family: monospace;
-    font-size: 12px;
+    font-size: var(--size-caption);
 }
-
-.crash-reload {
-    padding: 8px 20px;
-    background-color: var(--color-action);
-    color: var(--color-on-action);
-    border: none;
-    border-radius: var(--radius-control);
-    font-size: 14px;
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-}
-
 
 /* Reading view navigation (reading-navigation-spec.md, 2026-11-10). Base styles live here, not
    inline, so the hover and pressed states below can change them. */
-.em-seg {
-    display: flex;
-    flex-shrink: 0;
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    overflow: hidden;
+/* The reading bar (LibraryCardView): the shared quiet Button at the bar's own size (32, in a tray
+   with 4px padding, its corners nested) and in text-1, as the product has it (board P2 keeps it) */
+.em-bar-button.ba-button { height: 32px; padding: 0 var(--space-3); color: var(--text-1); border-radius: max(var(--radius-1), calc(var(--radius-2) - var(--space-1))); }
+
+/* Stepping between messages (MessageCard, FLIP_CROSSFADE_MS): the message arriving fades in over the
+   one left, both fully drawn */
+@keyframes em-flip-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-.em-seg button {
-    width: 32px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--color-text-main);
-    cursor: pointer;
-}
-
-.em-seg button:disabled {
-    opacity: 0.45;
-    cursor: default;
-}
-
-.em-seg .em-seg-divider {
-    width: 1px;
-    background: var(--border-strong);
-}
-
-.em-tree-toggle {
-    width: 30px;
-    height: 30px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--color-text-muted);
-    cursor: pointer;
-}
+/* Aa, the text sizes (MessageCard): the shared Segmented in Aa's own look (board P2 keeps it): a
+   raised tray, each "Aa" at its own size, the chosen one on surface-1 */
+.em-aa.ba-segmented { padding: var(--space-1); background: var(--surface-raised); }
+.em-aa.ba-segmented button { display: flex; align-items: center; justify-content: center; height: auto; padding: var(--space-1) var(--space-3); line-height: 1; border-radius: max(var(--radius-1), calc(var(--radius-2) - var(--space-1))); }
+.em-aa.ba-segmented button[aria-checked="true"] { background: var(--surface-1); }
+/* The thread tree's toggle (the shared IconButton): its icon in text-3 until hovered or open */
+.em-tree-toggle { color: var(--text-3); }
 
 .em-tree-row {
     position: relative;
     display: block;
     width: 100%;
+    min-height: var(--row-tree); /* 52, as drawn: the 12px preview line alone would make it 51.5 */
     box-sizing: border-box;
     padding: 7px 10px 7px 0;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-2);
     background: transparent;
-    color: var(--color-text-main);
+    color: var(--text-1);
     font: inherit;
     text-align: left;
     cursor: pointer;
@@ -831,13 +516,13 @@ button {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin: 0 0 12px;
+    margin: 0 0 var(--space-3);
     padding: 0;
     border: 0;
     background: none;
     font: inherit;
-    font-size: 13px;
-    color: var(--color-text-faint);
+    font-size: var(--size-small);
+    color: var(--text-4);
     cursor: pointer;
 }
 
@@ -846,23 +531,23 @@ button {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 0 12px 0 24px;
-    background: var(--band-note-bg);
-    border-bottom: 1px solid var(--color-border);
-    font-size: 13px;
-    color: var(--color-text-muted);
+    gap: var(--space-1);
+    padding: 0 var(--space-3) 0 var(--space-6);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--line-1);
+    font-size: var(--size-small);
+    color: var(--text-3);
 }
 
 .em-band-note button {
     height: 26px;
     padding: 0 10px;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-2);
     background: transparent;
     font: inherit;
-    font-size: 13px;
-    color: var(--color-text-main);
+    font-size: var(--size-small);
+    color: var(--text-1);
     cursor: pointer;
 }
 
@@ -875,11 +560,11 @@ button {
     height: 28px;
     padding: 0 6px;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-2);
     background: transparent;
     font: inherit;
-    font-size: 12.5px;
-    color: var(--color-text-faint);
+    font-size: var(--size-small);
+    color: var(--text-4);
     white-space: nowrap;
     cursor: pointer;
 }
@@ -888,9 +573,9 @@ button {
     display: flex;
     align-items: center;
     gap: 2px;
-    padding: 4px;
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    padding: var(--space-1);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-3);
     background: var(--surface-raised);
 }
 
@@ -903,9 +588,9 @@ button {
     justify-content: center;
     padding: 0;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-2);
     background: transparent;
-    color: var(--color-text-main);
+    color: var(--text-1);
     cursor: pointer;
 }
 
@@ -914,59 +599,27 @@ button {
     cursor: default;
 }
 
-.em-conv-pill .em-tip {
-    display: none;
-    position: absolute;
-    bottom: 44px;
-    width: max-content;
-    max-width: 320px;
-    padding: 6px 10px;
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    background: var(--surface-raised);
-    box-shadow: var(--tip-shadow);
-    font-size: 12.5px;
-    color: var(--message-text);
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    pointer-events: none;
-    z-index: 5;
-}
-
-.em-conv-pill .em-tip i {
-    font-style: normal;
-    color: var(--color-text-faint);
-    margin-right: 6px;
-}
-
 /* Hover and pressed */
-.em-seg button:not(:disabled):hover,
 .em-tree-toggle:hover,
 .em-tree-toggle[aria-expanded="true"],
 .em-tree-row:not(:disabled):hover,
 .em-band-note button:hover,
 .em-conv-pill button:not(:disabled):hover,
 .em-target-link:hover {
-    background: var(--color-bg-hover);
-    color: var(--color-text-main);
+    background: var(--fill-hover);
+    color: var(--text-1);
 }
 
 .em-tree-row[aria-current="true"],
 .em-tree-row[aria-current="true"]:hover {
-    background: var(--tree-current-bg);
-    box-shadow: inset 0 0 0 1px var(--tree-current-ring);
+    background: var(--fill-selected);
+    box-shadow: inset 0 0 0 1px var(--line-current);
 }
 
 .em-reply-line:hover {
-    color: var(--color-text-main);
+    color: var(--text-1);
     text-decoration: underline;
-    text-decoration-color: rgba(237, 237, 237, 0.4);
+    text-decoration-color: color-mix(in srgb, var(--text-1) 40%, transparent);
     text-underline-offset: 3px;
 }
 
-.em-conv-pill button:not(:disabled):hover .em-tip,
-.em-conv-pill button:not(:disabled):focus-visible .em-tip {
-    display: block;
-}

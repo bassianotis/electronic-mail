@@ -16,7 +16,7 @@ import { Accounts } from '../src/app/accounts.ts';
 import { loadOrCreateKey } from '../src/app/secrets.ts';
 import { Outbox, saveCopyWith, type OutboxDeps, type Transport } from '../src/app/outbox.ts';
 import { Uploads } from '../src/app/uploads.ts';
-import { buildMessage } from '../src/app/compose.ts';
+import { buildMessage, forwardSubject, replySubject } from '../src/app/compose.ts';
 import { createApiServer } from '../src/api/server.ts';
 import { threadDetail, sentView } from '../src/views/views.ts';
 
@@ -346,4 +346,13 @@ test('Sent copy late: delivered once, copy retried until saved, never duplicated
     } finally {
         await t.close();
     }
+});
+
+test('reply and forward subjects: once; with no subject, "Re:" or "Fwd:" alone (owner, Checkpoint C)', () => {
+    assert.equal(replySubject('Roof estimate'), 'Re: Roof estimate');
+    assert.equal(replySubject('re: Roof estimate'), 're: Roof estimate');
+    assert.equal(replySubject(null), 'Re:');
+    assert.equal(replySubject('  '), 'Re:');
+    assert.equal(forwardSubject('Roof estimate'), 'Fwd: Roof estimate');
+    assert.equal(forwardSubject(null), 'Fwd:');
 });

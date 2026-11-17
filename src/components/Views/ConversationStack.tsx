@@ -151,9 +151,10 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
 
     return (
         <div onWheel={handleWheel} style={{ position: 'relative', height: '100%', pointerEvents: 'auto' }}>
-            {/* Only while the tree is closed, never in the band: one edge for one older message, two for more */}
+            {/* Only while the tree is closed, never in the band: one edge for one older message, two for more.
+                Their z-index is the view layer's, local (the stack's edges under the card) */}
             {!treeOpen && !compact && arriving && EDGES.slice(0, Math.min(shownOlder, 2)).map((edge, k) => (
-                <span key={k} aria-hidden="true" style={{ position: 'absolute', zIndex: 2 - k, left: edge.inset, right: edge.inset, top: edge.top, height: edge.height, boxSizing: 'border-box', background: 'var(--stack-edge-bg)', border: '1px solid var(--stack-edge-border)', borderBottom: 0, borderRadius: '8px 8px 0 0' }} />
+                <span key={k} aria-hidden="true" style={{ position: 'absolute', zIndex: 2 - k, left: edge.inset, right: edge.inset, top: edge.top, height: edge.height, boxSizing: 'border-box', background: 'var(--stack-edge)', border: '1px solid var(--line-current)', borderBottom: 0, borderRadius: 'var(--radius-3) var(--radius-3) 0 0' }} />
             ))}
             {!treeOpen && !compact && !arriving && EDGES.slice(0, Math.min(shownOlder, 2)).map((edge, k) => {
                 const behind = emails[shown + 1 + k];
@@ -170,16 +171,16 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
                             all: 'unset',
                             cursor: 'pointer',
                             position: 'absolute',
-                            zIndex: 2 - k,
+                            zIndex: 2 - k, // layer: view, local (the edges under the card)
                             left: edge.inset,
                             right: edge.inset,
                             top: edge.top,
                             height: edge.height,
                             boxSizing: 'border-box',
-                            background: 'var(--stack-edge-bg)',
-                            border: '1px solid var(--stack-edge-border)',
+                            background: 'var(--stack-edge)',
+                            border: '1px solid var(--line-current)',
                             borderBottom: 0,
-                            borderRadius: '8px 8px 0 0'
+                            borderRadius: 'var(--radius-3) var(--radius-3) 0 0'
                         }}
                     />
                 );
@@ -190,11 +191,11 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
                 style={{
                     position: 'absolute',
                     inset: 0,
-                    zIndex: 3,
+                    zIndex: 3, // layer: view, local (the card over its edges)
                     display: 'flex',
                     flexDirection: 'column',
-                    borderRadius: 'var(--radius-tile)',
-                    boxShadow: 'var(--shadow-message-front)',
+                    borderRadius: 'var(--radius-3)',
+                    boxShadow: '0 0 0 1px var(--line-2)',
                     overflow: 'hidden',
                     background: 'var(--surface-raised)'
                 }}

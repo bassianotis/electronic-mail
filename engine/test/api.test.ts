@@ -195,6 +195,18 @@ test('body: charset decoded, inline image inlined, attachments listed, cached', 
     }
 });
 
+test('an account that is offline is the engine answering (409, in words), never a proxy\'s 503', async () => {
+    const t = await setup();
+    try {
+        await t.worker.stop();
+        const res = await t.api(`/accounts/acct-1/messages/${encodeURIComponent('plain@test')}/body`);
+        assert.equal(res.status, 409, 'not 503, which the screens read as their own server being down');
+        assert.match(res.body.error, / is offline$/);
+    } finally {
+        await t.close();
+    }
+});
+
 test('attachments are always sandboxed downloads, never rendered on our origin', async () => {
     const t = await setup();
     try {

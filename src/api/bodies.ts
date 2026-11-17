@@ -4,7 +4,7 @@
  * cache, so a miss here is still fast.)
  */
 import { useCallback, useEffect, useState } from 'react';
-import { api, errorText, paths } from './client';
+import { api, couldnt, paths } from './client';
 import { useSessionEpoch } from './events';
 import type { MessageBody } from './types';
 
@@ -44,7 +44,7 @@ export function useMessageBody(accountId: string | null, msgKey: string | null, 
         let current = true;
         loadBody(accountId, msgKey)
             .then(body => { if (current) setState({ key, body, error: null }); })
-            .catch(err => { if (current) setState({ key, body: null, error: errorText(err) }); });
+            .catch(err => { if (current) setState({ key, body: null, error: couldnt('load this message', err) }); });
         return () => { current = false; };
     }, [accountId, msgKey, enabled, key, sessionEpoch, attempt]);
 

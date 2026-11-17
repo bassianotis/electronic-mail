@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { LogOut } from 'lucide-react';
 import { signInAgain, signedOutKind, SIGN_IN_REASON, type SignedOutKind } from '../api/family';
 import { returnPath } from '../utils/currentView';
+import { Button } from '../ui/Button';
 
 const KEPT = "Anything you were writing stays on this computer until you're back.";
 
@@ -50,14 +51,12 @@ export const SignedOutDialog: React.FC<{ reason: string | null }> = ({ reason })
     }, []);
 
     return createPortal(
-        <div className="signed-out-scrim">
+        <div className="signed-out-scrim" data-layer="critical">
             <div className="signed-out-dialog" role="alertdialog" aria-modal="true" aria-labelledby="signed-out-title" aria-describedby="signed-out-body">
-                <LogOut size={20} aria-hidden="true" style={{ color: 'var(--color-text-muted)' }} />
+                <LogOut size={20} aria-hidden="true" style={{ color: 'var(--text-3)' }} />
                 <h2 id="signed-out-title">{copy.title}</h2>
                 <p id="signed-out-body">{copy.body}</p>
-                <button ref={button} type="button" className="signed-out-button" onClick={() => signInAgain(returnPath(), SIGN_IN_REASON[kind])}>
-                    Sign in again
-                </button>
+                <Button ref={button} kind="primary" size="lg" onClick={() => signInAgain(returnPath(), SIGN_IN_REASON[kind])}>Sign in again</Button>
                 {copy.caption && <span className="signed-out-caption">{copy.caption}</span>}
             </div>
         </div>,

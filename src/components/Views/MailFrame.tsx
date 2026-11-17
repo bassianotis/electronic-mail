@@ -15,6 +15,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { IMAGE_ICON, type PlaceholderLook } from '../../utils/remoteImages';
+import { useLetterFont, type LetterFont } from '../../trials/trialsState';
 
 interface MailFrameProps {
     /** Sanitized HTML, placeholders already in (utils/remoteImages.ts). */
@@ -57,48 +58,52 @@ blockquote{border-left:2px solid ${quoteBar};}`;
 
 /** Reader's type (once in the page, now in the frame): the email's own styles are gone. */
 function readerStyles(): string {
-    return `#em-root{color:${cssVar('--reader-text')};}
-body{font-size:${cssVar('--font-size-lg')};line-height:1.7;}
+    return `#em-root{color:${cssVar('--text-2')};}
+body{font-size:${cssVar('--size-title')};line-height:1.7;}
 p{margin:0 0 1.4em;}
 h1,h2,h3,h4,h5,h6{margin:1.5em 0 0.75em;font-weight:600;line-height:1.3;}
 h1{font-size:2em;}h2{font-size:1.75em;}h3{font-size:1.5em;}h4{font-size:1.25em;}h5{font-size:1.1em;}h6{font-size:1em;}
-${linkStyles(cssVar('--reader-link'), cssVar('--reader-link-underline'), cssVar('--reader-quote-bar'))}
+${linkStyles(cssVar('--text-1'), `color-mix(in srgb, ${cssVar('--text-1')} 40%, transparent)`, cssVar('--line-2'))}
 strong,b{font-weight:600;}
 #em-root :not(em, i, em *, i *){font-style:normal;}
 em,i{font-style:italic;}
 blockquote{margin:1.5em 0;padding-left:1.5em;}
-img{margin:2em auto;border-radius:8px;display:block;}
+img{margin:2em auto;border-radius:${cssVar('--radius-3')};display:block;}
 ul,ol{margin:1em 0;padding-left:2em;}
 li{margin-bottom:0.5em;}
 table{border-collapse:collapse;width:100%;margin:0 0 1.4em;}
-td,th{padding:6px 8px;text-align:left;vertical-align:top;border-bottom:1px solid ${cssVar('--reader-rule')};}`;
+td,th{padding:6px 8px;text-align:left;vertical-align:top;border-bottom:1px solid ${cssVar('--line-2')};}`;
 }
 
-function frameDocument(html: string, opts: { look: PlaceholderLook; imagesAllowed: boolean; fontSize: number; fonts: string }): string {
+function frameDocument(html: string, opts: { look: PlaceholderLook; imagesAllowed: boolean; fontSize: number; fonts: string; letter: LetterFont | null }): string {
     const { look, imagesAllowed, fontSize, fonts } = opts;
     const paper = look === 'paper';
+    // A design trial's letter font (trials/): theme mail, plain text and Reader; paper keeps the
+    // sender's fonts. Its files are written into the rules (data:), so the policy stays as it is;
+    // a weight it doesn't have gets its 500, never a faked bold.
+    const letter = paper ? null : opts.letter;
     const outside = imagesAllowed ? ' https: http:' : '';
     const policy = `default-src 'none'; script-src ${frameScript()}; style-src 'unsafe-inline'; img-src data:${outside}; font-src data:${outside}; media-src 'none'; base-uri 'none'; form-action 'none'`;
     // The lamplit sheet fills the card, and the email sits centred on it at its own width. A design
     // wider than the card scrolls inside the sheet rather than shrinking.
     const sheet = paper
         ? `background:${cssVar('--paper-bg')};color:${cssVar('--paper-text')};filter:${cssVar('--paper-filter')};padding:${cssVar('--paper-pad')};border-radius:${cssVar('--paper-radius')};width:${cssVar('--paper-width')};min-width:${cssVar('--paper-min-width')};max-width:100%;overflow-x:auto;margin:${cssVar('--paper-margin')};box-shadow:${cssVar('--paper-shadow')};`
-        : look === 'reader' ? '' : `color:${cssVar('--message-text')};`;
-    const selection = `::selection{background:color-mix(in srgb, ${cssVar('--color-action')} 35%, transparent);}`;
+        : look === 'reader' ? '' : `color:${cssVar('--text-2')};`;
+    const selection = `::selection{background:color-mix(in srgb, ${cssVar('--action')} 35%, transparent);}`;
     const lookStyles = look === 'reader' ? readerStyles() + selection
-        : look === 'theme' ? linkStyles(cssVar('--message-link'), cssVar('--link-underline'), cssVar('--quote-bar')) + 'blockquote{margin:0.5em 0;padding-left:12px;}table{max-width:100%;}' + selection
+        : look === 'theme' ? linkStyles(cssVar('--text-1'), `color-mix(in srgb, ${cssVar('--text-1')} 40%, transparent)`, cssVar('--line-2')) + 'blockquote{margin:0.5em 0;padding-left:12px;}table{max-width:100%;}' + selection
         : '';
     const placeholder = paper
         ? 'background:#efebe3;border:1px dashed #cdc6b8;color:#8a857c;font:12px/1.3 Helvetica,Arial,sans-serif;gap:6px;'
         : look === 'reader'
-        ? `background:${cssVar('--surface-card')};border:1px dashed color-mix(in srgb, ${cssVar('--color-text-main')} 18%, transparent);border-radius:4px;color:${cssVar('--color-text-faint')};font:13px/1.3 ${FONT};gap:8px;margin:4px 0;`
-        : `background:${cssVar('--surface-card')};border:1px dashed rgba(237,237,237,0.18);border-radius:4px;color:${cssVar('--color-text-faint')};font:13px/1.3 ${FONT};gap:8px;margin:4px 0;`;
+        ? `background:${cssVar('--surface-1')};border:1px dashed color-mix(in srgb, ${cssVar('--text-1')} 18%, transparent);border-radius:${cssVar('--radius-1')};color:${cssVar('--text-4')};font:${cssVar('--size-small')}/1.3 ${FONT};gap:${cssVar('--space-2')};margin:${cssVar('--space-1')} 0;`
+        : `background:${cssVar('--surface-1')};border:1px dashed color-mix(in srgb, ${cssVar('--text-1')} 18%, transparent);border-radius:${cssVar('--radius-1')};color:${cssVar('--text-4')};font:${cssVar('--size-small')}/1.3 ${FONT};gap:${cssVar('--space-2')};margin:${cssVar('--space-1')} 0;`;
     // A one-line chip for an image of unknown or small size: secondary text, a hairline at 13%
     const chip = paper
         ? 'background:transparent;border:1px solid rgba(0,0,0,0.13);color:#8a857c;font:13px/1 Helvetica,Arial,sans-serif;'
         : look === 'reader'
-        ? `background:transparent;border:1px solid color-mix(in srgb, ${cssVar('--reader-text')} 13%, transparent);color:${cssVar('--reader-muted')};font:13px/1 ${FONT};`
-        : `background:transparent;border:1px solid ${cssVar('--border-strong')};color:${cssVar('--color-text-muted')};font:13px/1 ${FONT};`;
+        ? `background:transparent;border:1px solid color-mix(in srgb, ${cssVar('--text-2')} 13%, transparent);color:${cssVar('--text-3')};font:${cssVar('--size-small')}/1 ${FONT};`
+        : `background:transparent;border:1px solid ${cssVar('--line-2')};color:${cssVar('--text-3')};font:${cssVar('--size-small')}/1 ${FONT};`;
     // Room under the sheet for its shadow
     const extra = paper ? 20 : 0;
     return `<!doctype html><html><head><meta charset="utf-8">
@@ -109,7 +114,8 @@ function frameDocument(html: string, opts: { look: PlaceholderLook; imagesAllowe
 :root{color-scheme:dark;}
 html,body{margin:0;padding:0;background:transparent;}
 html{overflow-x:auto;overflow-y:hidden;}
-body{font-family:${FONT};font-size:${fontSize}px;line-height:1.6;overflow-wrap:break-word;word-wrap:break-word;}
+${letter?.faces ?? ''}
+body{font-family:${letter ? `${letter.family};font-synthesis-weight:none` : FONT};font-size:${fontSize}px;line-height:1.6;overflow-wrap:break-word;word-wrap:break-word;}
 #em-root{box-sizing:border-box;${sheet}}
 img{max-width:100%;height:auto;}
 ${lookStyles}
@@ -138,7 +144,8 @@ export const MailFrame: React.FC<MailFrameProps> = ({ html, look, imagesAllowed,
     const sheetLeft = useRef(onSheetLeft);
     useEffect(() => { sheetLeft.current = onSheetLeft; }, [onSheetLeft]);
 
-    const srcDoc = useMemo(() => frameDocument(html, { look, imagesAllowed, fontSize, fonts }), [html, look, imagesAllowed, fontSize, fonts]);
+    const letter = useLetterFont();
+    const srcDoc = useMemo(() => frameDocument(html, { look, imagesAllowed, fontSize, fonts, letter }), [html, look, imagesAllowed, fontSize, fonts, letter]);
 
     // Listening from the moment the frame is in the page (a layout effect, not one after paint): a
     // frame that loads quickly, drawn out of sight ahead, could otherwise say its size to no one

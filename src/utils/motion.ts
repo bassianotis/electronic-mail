@@ -8,11 +8,19 @@
 export const noNativeAnimation = () => {};
 
 /**
- * The app's motion (unslop round 1): one curve and three durations, the same as --ease, --dur-fast,
- * --dur-mid and --dur-slow in index.css. Fast: hover, press, toggles. Mid: menus, popovers,
- * notices. Slow: entrances, sheets, layout changes. main.tsx makes the slow tween every motion
- * element's default, so nothing springs unless dragged.
+ * The app's motion (design system v2, board F-motion): two curves and four durations, the same as
+ * --ease-in, --ease-out and --dur-instant / -fast / -base / -slow in styles/tokens.css.
+ * - Arriving: EASE (an ease-out with no overshoot). Leaving: EASE_OUT, which speeds up as it goes;
+ *   leaving is quicker than arriving.
+ * - Instant 100ms: hover, pressed, checks, a menu leaving. Fast 150: leaving, drag. Mid 200: arriving
+ *   (menus, notices, dialogs). Slow 350: a whole page or a long move.
+ * main.tsx makes the slow tween every motion element's default, so nothing springs unless dragged.
  */
 export const EASE = [0.22, 1, 0.36, 1] as const;
-export const DURATION = { fast: 0.15, mid: 0.2, slow: 0.35 };
+export const EASE_OUT = [0.4, 0, 1, 1] as const;
+export const DURATION = { instant: 0.1, fast: 0.15, mid: 0.2, slow: 0.35 };
 export const tween = (duration: number) => ({ duration, ease: EASE });
+/** Leaving: the exit curve (an `exit`'s own transition). */
+export const leave = (duration: number = DURATION.fast) => ({ duration, ease: EASE_OUT });
+/** A dragged card's size: 50% everywhere (board F-motion), around the point where it was grabbed. */
+export const DRAG_SCALE = 0.5;

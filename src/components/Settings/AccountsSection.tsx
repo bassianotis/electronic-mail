@@ -1,21 +1,23 @@
 /**
  * Accounts (settings-spec.md §7): every account, in the rail's order (drag a handle, or use the
- * arrow keys on it), with its status; Remove asks in place, not in a browser box; "+ Add an email
+ * arrow keys on it), with its status; Remove asks in place, not in a browser box; "Add an email
  * account" turns Settings into that step (AddAccount.tsx). Without the shared sign-in, signing
  * out of this browser lives here too.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, Reorder, useDragControls, useReducedMotion } from 'framer-motion';
-import { Check, GripVertical, TriangleAlert } from 'lucide-react';
-import { api, errorText } from '../../api/client';
+import { Check, GripVertical, Plus, TriangleAlert } from 'lucide-react';
+import { api, couldnt } from '../../api/client';
 import type { Account } from '../../api/types';
 import type { LiveStatus } from '../../api/events';
 import { useFamily } from '../../api/family';
 import { useMail } from '../../context/MailContext';
 import { tabLabel } from '../../utils/accountLabel';
-import { DURATION, tween } from '../../utils/motion';
+import { DURATION, leave, tween } from '../../utils/motion';
+import { Button } from '../../ui/Button';
+import { Question } from '../../ui/Dialog';
+import { Note } from '../../ui/Note';
 import { Problem } from './parts';
-import { sentence } from './useSettings';
 
 /** An onUpdate that does nothing: it keeps framer's animations on the page (see the question below). */
 const keepOnPage = () => {};
@@ -57,7 +59,7 @@ export const AccountsSection: React.FC<{
             await api.put('/account-order', { ids: next });
             await fetchAccounts();
         } catch (err) {
-            showToast({ message: `Couldn't save the new order: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('save the new order', err), tone: 'error' });
             setOrder(ids);
         }
     };
@@ -78,10 +80,7 @@ export const AccountsSection: React.FC<{
     return (
         <>
             {justAdded && (
-                <div className="st-box" role="status">
-                    <span className="st-good"><Check size={16} aria-hidden="true" /></span>
-                    <span><b>{justAdded} is added.</b> Its mail is loading in the background</span>
-                </div>
+                <Note role="status" icon={<Check size={16} aria-hidden="true" className="is-good" />}><b>{justAdded} is added.</b> Its mail is loading in the background</Note>
             )}
             <div>
                 <Reorder.Group as="div" axis="y" values={order} onReorder={setOrder} className="st-list" role="list" aria-label="Accounts">
@@ -97,10 +96,10 @@ export const AccountsSection: React.FC<{
                         );
                     })}
                 </Reorder.Group>
-                {accounts.length > 1 && <p className="st-hint">Drag to change the order of the tabs</p>}
+                {accounts.length > 1 && <p className="ba-hint">Drag to change the order of the tabs</p>}
             </div>
             <div>
-                <button type="button" className="st-btn" onClick={onAdd}>+ Add an email account</button>
+                <Button icon={<Plus size={16} aria-hidden="true" />} onClick={onAdd}>Add an email account</Button>
             </div>
             {!sharedSignIn && <SignOut />}
         </>
@@ -135,7 +134,7 @@ const AccountRow: React.FC<{
             window.location.reload();
         } catch (err) {
             setRemoving(false);
-            setProblem(`Couldn't remove it: ${sentence(errorText(err))}`);
+            setProblem(couldnt('remove it', err));
         }
     };
 
@@ -144,7 +143,7 @@ const AccountRow: React.FC<{
         // does (the question opening under it used to squash and stretch the row's text)
         <Reorder.Item as="div" value={account.id} dragListener={false} dragControls={controls} role="listitem" layout="position"
             transition={tween(DURATION.mid)} onDragEnd={onDropped} style={{ position: 'relative' }}
-            whileDrag={{ zIndex: 2, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)' }}>
+            whileDrag={{ zIndex: 2 /* layer: drag, local (a row dragged in its list) */, boxShadow: 'var(--shadow-raised)' /* the standard raised shadow (owner, Checkpoint C) */ }}>
             <div className="st-account">
                 <button ref={handleRef} type="button" className="st-handle" aria-label={`Reorder ${label}`} title="Drag to reorder"
                     onPointerDown={e => { e.preventDefault(); controls.start(e); }}
@@ -160,7 +159,7 @@ const AccountRow: React.FC<{
                 <span className={`st-state${shown.warn ? ' st-state-warn' : ''}`}>
                     {shown.warn && <TriangleAlert size={13} aria-hidden="true" />}{shown.text}
                 </span>
-                <button type="button" className="st-text st-text-danger" onClick={onAsk} aria-expanded={asking} disabled={removing}>Remove…</button>
+                <Button kind="quiet" size="sm" dangerText onClick={onAsk} aria-expanded={asking} disabled={removing}>Remove…</Button>
             </div>
             {/* The question opens beneath the row like the Inbox's gaps close: its space on the app's
                 curve (200ms), the rows below sliding with it, the words fading in (150ms). With Reduce
@@ -173,17 +172,13 @@ const AccountRow: React.FC<{
                     <motion.div key="confirm" className="st-confirm-wrap" style={{ overflow: 'hidden' }} onUpdate={keepOnPage}
                         initial={{ height: reduce ? 'auto' : 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: reduce ? 'auto' : 0, opacity: 0 }}
+                        exit={{ height: reduce ? 'auto' : 0, opacity: 0, transition: { height: reduce ? { duration: 0 } : leave(DURATION.mid), opacity: leave() } }}
                         transition={{ height: reduce ? { duration: 0 } : tween(DURATION.mid), opacity: tween(DURATION.fast) }}>
-                        <div className="st-confirm" role="group" aria-label={`Remove ${account.email}`}>
-                            <b>Remove {account.email} from Mail?</b><br />
+                        <Question inRow title={`Remove ${account.email} from Mail?`} onCancel={onCancel} busy={removing}
+                            action={<Button kind="danger" onClick={() => void remove()} working={removing && 'Removing…'}>Remove account</Button>}
+                            after={problem && <Problem>{problem}</Problem>}>
                             Mail forgets this account's rules, how its buckets look and its saved copy of the mail. The mail itself stays on the server, buckets included, and you can add the account again.
-                            <div className="st-row" style={{ marginTop: 12 }}>
-                                <button type="button" className="st-btn" onClick={onCancel} disabled={removing} autoFocus>Cancel</button>
-                                <button type="button" className="st-danger" onClick={() => void remove()} disabled={removing}>{removing ? 'Removing…' : 'Remove account'}</button>
-                            </div>
-                            {problem && <Problem>{problem}</Problem>}
-                        </div>
+                        </Question>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -196,15 +191,15 @@ const SignOut: React.FC = () => {
     const [problem, setProblem] = useState<string | null>(null);
     return (
         <div>
-            <button type="button" className="st-btn" onClick={async () => {
+            <Button progress="Signing out…" onClick={async () => {
                 try {
                     await api.post('/auth/logout');
                     window.location.reload();
                 } catch (err) {
-                    setProblem(`Couldn't sign out: ${sentence(errorText(err))}`);
+                    setProblem(couldnt('sign out', err));
                 }
-            }}>Sign out of this browser</button>
-            <p className="st-hint">Signs you out of this browser only</p>
+            }}>Sign out of this browser</Button>
+            <p className="ba-hint">Signs you out of this browser only</p>
             {problem && <Problem>{problem}</Problem>}
         </div>
     );

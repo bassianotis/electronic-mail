@@ -11,7 +11,9 @@ import { useComposer } from '../../context/ComposerContext';
 import { api } from '../../api/client';
 import { signInAgain, useFamily } from '../../api/family';
 import { AppsMenu } from '../../shared/AppsMenu';
+import { Tooltip } from '../../ui/Tooltip';
 import { tabLabel } from '../../utils/accountLabel';
+import { Z } from '../../utils/layers';
 
 export const RAIL_WIDTH = 48;
 /** How long the tabs take to move (the transitions on .account-tab in index.css). */
@@ -67,12 +69,12 @@ export const AccountRail: React.FC = () => {
             paddingTop: '76px', // the first tab lines up with the page content below the top bar
             overflowY: 'auto',
             overflowX: 'hidden',
-            backgroundColor: 'var(--rail-bg)',
+            backgroundColor: 'var(--bg-rail)',
             // The rail's edge line, drawn inside it so the open tab (flush with the edge) covers it;
             // a real border would sit outside the scrolling box, out of the tab's reach.
-            boxShadow: 'inset -1px 0 0 var(--rail-edge)',
+            boxShadow: 'inset -1px 0 0 transparent',
             position: 'relative',
-            zIndex: 1,
+            zIndex: Z.chrome.rail,
         }}>
             {family && (
                 <AppsMenu
@@ -90,26 +92,26 @@ export const AccountRail: React.FC = () => {
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-end',
-                gap: '8px',
+                gap: 'var(--space-2)',
             }}>
                 {accounts.map((account, i) => {
                     const isOpen = account.id === openId;
                     return (
-                        <button
-                            key={account.id}
-                            ref={el => { tabs.current[i] = el; }}
-                            type="button"
-                            role="tab"
-                            className="account-tab"
-                            aria-selected={isOpen}
-                            aria-label={account.email}
-                            title={account.email}
-                            tabIndex={isOpen ? 0 : -1}
-                            onClick={() => open(account.id)}
-                            onKeyDown={e => moveFocus(e, i)}
-                        >
-                            {tabLabel(account, accounts)}
-                        </button>
+                        <Tooltip key={account.id} content={account.email}>
+                            <button
+                                ref={el => { tabs.current[i] = el; }}
+                                type="button"
+                                role="tab"
+                                className="account-tab"
+                                aria-selected={isOpen}
+                                aria-label={account.email}
+                                tabIndex={isOpen ? 0 : -1}
+                                onClick={() => open(account.id)}
+                                onKeyDown={e => moveFocus(e, i)}
+                            >
+                                {tabLabel(account, accounts)}
+                            </button>
+                        </Tooltip>
                     );
                 })}
             </div>

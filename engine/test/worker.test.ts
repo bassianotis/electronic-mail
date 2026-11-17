@@ -246,6 +246,21 @@ test('auto-archive sweeps once a day: at the first start, not again on a restart
     }
 });
 
+test('a job whose connection drops mid-way is refused as offline, not in the socket\'s own words (a bucket action)', async () => {
+    const t = await setup();
+    try {
+        t.worker.start();
+        await until('online', () => t.statuses.some(s => s.state === 'online'));
+        await assert.rejects(t.worker.runJob(async client => {
+            kick(t.user);
+            await new Promise(r => setTimeout(r, 300));
+            await client.mailboxCreate('INBOX.Gone');
+        }), { message: `${t.user} is offline` });
+    } finally {
+        await t.close();
+    }
+});
+
 test('stopping while still connecting returns promptly and leaves no connection open (account removed right after adding)', async () => {
     const user = freshUser();
     const phone: ImapFlow = await connect(user);

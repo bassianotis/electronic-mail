@@ -16,24 +16,31 @@ import { setFamilyFrom, signInAgain, signedOutKind, SIGN_IN_REASON } from './api
 import { setOpenThread } from './utils/currentView';
 import { Login } from './components/Auth/Login';
 import { StartFrame } from './components/Loading/StartFrame';
+import { Button } from './ui/Button';
 import { FLOATING_WIDTH } from './utils/layout';
 // The design playground (?playground): loaded, with its font, only when the address asks for it
 const Playground = lazy(() => import('./components/Playground'));
 const PLAYGROUND = new URLSearchParams(window.location.search).has('playground');
+// The design trials (?trials, docs/design: the v2 font candidates): loaded, with the fonts, only when
+// asked for, left open, or a trial font is still chosen in this browser
+const DesignTrials = lazy(() => import('./trials/DesignTrials'));
+const TRIALS = trialsWanted();
 import { DragDropProvider } from './context/DragDropContext';
 import { useMail, MailProvider } from './context/MailContext';
 import { ComposerProvider, OPEN_CONVERSATION_EVENT, useComposer } from './context/ComposerContext';
 import { type Email } from './store/mailStore';
 import type { ListKey } from './hooks/conversationLists';
-import { api, errorText, paths, AUTH_REQUIRED_EVENT, SESSION_RESTORED_EVENT } from './api/client';
+import { api, couldnt, paths, AUTH_REQUIRED_EVENT, SESSION_RESTORED_EVENT } from './api/client';
 import type { AuthStatus, DraftContent, DraftSummary, ThreadDetail } from './api/types';
 import { cardFromThread, messageFromThread } from './utils/emailMapper';
+import { trialsWanted } from './trials/trialsState';
+import { KEEP_OVER_VIEW, useEscape, useModal, Z } from './utils/layers';
 
 type Gate = 'loading' | 'unreachable' | 'first-run' | 'login' | 'ready';
 
 /**
  * Login first; the mail screens only exist for a signed-in user. Until the engine says which, the
- * page is blank, and after 250ms the start frame (never the login form by mistake).
+ * page is blank, and after 300ms the start frame (never the login form by mistake).
  */
 function App() {
     const [gate, setGate] = useState<Gate>('loading');
@@ -95,15 +102,13 @@ function App() {
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '12px',
+                gap: 'var(--space-3)',
                 height: '100vh',
-                fontSize: 'var(--font-size-lg)',
-                color: 'var(--status-text)'
+                fontSize: 'var(--size-title)',
+                color: 'var(--text-3)'
             }}>
                 <span>The mail app's server isn't answering.</span>
-                <button onClick={() => { setGate('loading'); void checkStatus(); }} style={{ fontSize: 'var(--font-size-sm)', padding: '8px 16px', borderRadius: 'var(--radius-control)', border: '1px solid var(--pill-border)', background: 'var(--surface-card)', cursor: 'pointer' }}>
-                    Try again
-                </button>
+                <Button onClick={() => { setGate('loading'); void checkStatus(); }}>Try again</Button>
             </div>
         );
     }
@@ -132,7 +137,7 @@ function App() {
             </div>
             {signedOut && <SignedOutDialog reason={signedOut.reason} />}
             {sessionEnded && (
-                <div style={{ position: 'fixed', inset: 0, zIndex: 10000 }}>
+                <div data-layer="critical" style={{ position: 'fixed', inset: 0, zIndex: Z.critical.sessionEnded }}>
                     <Login sessionEnded onLogin={() => {
                         setSessionEnded(false);
                         window.dispatchEvent(new Event(SESSION_RESTORED_EVENT));
@@ -159,6 +164,23 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
     const [pendingDeepLink, setPendingDeepLink] = useState<string | null>(() => new URLSearchParams(window.location.search).get('thread'));
 
     const { buckets, accounts, accountsLoaded, accountsFailing, fetchAccounts, activeAccountId, setActiveAccountId, viewOf, showToast } = useMail();
+
+    // An open thread and a new message are modal (rule L3): the focus moves in, Tab stays inside (and
+    // on the notices; a thread also leaves the corner window usable), the page behind is inert, and
+    // closing goes back to whatever opened it. A thread that has moved on returns to its own card.
+    const viewLayer = useRef<HTMLDivElement>(null);
+    const lastThread = useRef<string | null>(null);
+    useEffect(() => { if (selectedEmail) lastThread.current = selectedEmail.threadId; }, [selectedEmail]);
+    useModal(viewLayer, !!selectedEmail, {
+        keep: KEEP_OVER_VIEW,
+        initial: () => viewLayer.current,
+        fallback: () => (lastThread.current ? document.querySelector<HTMLElement>(`a[data-thread-link][href="${CSS.escape(`?thread=${encodeURIComponent(lastThread.current)}`)}"]`) : null),
+    });
+    const centred = !!composing && composing.place === 'docked' && !composing.original?.threadId;
+    const newMessageLayer = useRef<HTMLDivElement>(null);
+    useModal(newMessageLayer, centred);
+    // Esc closes it and keeps the draft (rule L4; the owner, 2026-11-11), as a click outside does
+    useEscape(centred, 'dialog', () => void closeDraft());
 
     // Reset to inbox whenever the active email account changes
     useEffect(() => {
@@ -243,7 +265,7 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
     // message, a forward or a reply whose conversation isn't here, centred.
     const handleOpenDraft = (draft: DraftSummary) => {
         if (!activeAccountId) return;
-        const failed = (err: unknown) => showToast({ message: `Couldn't open the draft: ${errorText(err)}`, tone: 'error' });
+        const failed = (err: unknown) => showToast({ message: couldnt('open the draft', err), tone: 'error' });
         if (draft.threadId) {
             api.get<ThreadDetail>(paths.thread(activeAccountId, draft.threadId))
                 .then(detail => setSelection({ email: cardFromThread(detail.thread), draft: draft.msgKey }))
@@ -284,7 +306,7 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
     // setup screen) is only ever shown for a list that really is empty, never for one that failed.
     if (!accountsLoaded) {
         return accountsFailing ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--color-bg)', fontSize: 'var(--font-size-lg)', color: 'var(--status-text)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--bg-page)', fontSize: 'var(--size-title)', color: 'var(--text-3)' }}>
                 The mail app's server isn't answering. Trying again…
             </div>
         ) : <StartFrame />;
@@ -320,36 +342,38 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
             />
 
             {/* The conversation, wherever it was opened from */}
-            {selectedEmail && (
-                <LibraryCardView
-                    key={selectedEmail.threadId}
-                    email={selectedEmail}
-                    openDraft={selection?.draft}
-                    list={selection?.list}
-                    onOpen={(next, list) => setSelection(prev => ({ email: next, list, switched: !!prev }))}
-                    switched={selection?.switched}
-                    onClose={() => setSelectedEmail(null)}
-                />
-            )}
+            <div ref={viewLayer} data-layer="view">
+                {selectedEmail && (
+                    <LibraryCardView
+                        key={selectedEmail.threadId}
+                        email={selectedEmail}
+                        openDraft={selection?.draft}
+                        list={selection?.list}
+                        onOpen={(next, list) => setSelection(prev => ({ email: next, list, switched: !!prev }))}
+                        switched={selection?.switched}
+                        onClose={() => setSelectedEmail(null)}
+                    />
+                )}
+            </div>
 
             {/* A new message (or a draft without its conversation): the composer centred on its own */}
-            {composing && composing.place === 'docked' && !composing.original?.threadId && (
-                <div style={{ position: 'fixed', inset: 0, top: 'var(--server-banner)', zIndex: 200 }}>
+            {centred && (
+                <div ref={newMessageLayer} data-layer="dialog" style={{ position: 'fixed', inset: 0, top: 'var(--server-banner)', zIndex: Z.dialog.newMessage }}>
                     <div
                         onClick={() => void closeDraft()}
-                        style={{ position: 'absolute', inset: 0, backgroundColor: 'var(--overlay-scrim)', backdropFilter: 'blur(var(--blur-overlay))' }}
+                        style={{ position: 'absolute', inset: 0, backgroundColor: 'var(--scrim)' }}
                     />
-                    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 24px' }}>
-                        <div style={{
+                    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-5) var(--space-6)' }}>
+                        <div role="dialog" aria-modal="true" aria-label="New message" style={{
                             pointerEvents: 'auto',
                             // Sized to the window: up to 1000px, 24px clear of each side, centred on it
                             width: FLOATING_WIDTH,
                             minWidth: 0,
                             height: '780px',
                             maxHeight: '100%',
-                            borderRadius: 'var(--radius-lg)',
-                            boxShadow: 'var(--shadow-panel)',
-                            border: '1px solid var(--border-strong)',
+                            borderRadius: 'var(--radius-3)',
+                            boxShadow: 'var(--shadow-overlay)',
+                            border: '1px solid var(--line-2)',
                             overflow: 'hidden'
                         }}>
                             <Composer />
@@ -370,6 +394,7 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
             <ServerBanner />
             <ToastHost />
             {PLAYGROUND && <Suspense fallback={null}><Playground /></Suspense>}
+            {TRIALS && <Suspense fallback={null}><DesignTrials /></Suspense>}
         </>
     );
 }

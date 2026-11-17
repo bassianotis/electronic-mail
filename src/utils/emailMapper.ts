@@ -1,8 +1,11 @@
 /**
  * Turns the engine's shapes into what the screens show.
  */
-import type { Email, Bucket, Rule } from '../../shared/types';
-import type { BucketView, MessageBody, RuleView, ThreadCard, ThreadMessage } from '../api/types';
+import type { Email, Bucket } from '../../shared/types';
+import type { BucketView, MessageBody, ThreadCard, ThreadMessage } from '../api/types';
+
+/** What a thread or message with no subject is called on the screens (Copy board; rule D5). */
+export const NO_SUBJECT = 'No subject';
 
 function parseDate(value: string | null | undefined): Date {
     const parsed = value ? new Date(value) : null;
@@ -17,7 +20,7 @@ export function cardFromThread(t: ThreadCard): Email {
         msgKey: t.latestMsgKey,
         sender: t.fromName || t.fromAddr || 'Unknown',
         senderAddress: t.fromAddr ?? undefined,
-        subject: t.subject || '(No Subject)',
+        subject: t.subject || NO_SUBJECT,
         preview: t.preview ?? '',
         body: '',
         date: parseDate(t.latestDate),
@@ -36,7 +39,7 @@ export function messageFromThread(m: ThreadMessage, thread: ThreadCard): Email {
         msgKey: m.msgKey,
         sender: m.fromName || m.fromAddr || 'Unknown',
         senderAddress: m.fromAddr ?? undefined,
-        subject: m.subject || thread.subject || '(No Subject)',
+        subject: m.subject || thread.subject || NO_SUBJECT,
         preview: m.preview ?? '',
         body: '',
         date: parseDate(m.date),
@@ -91,14 +94,5 @@ export function bucketFromView(b: BucketView): Bucket {
         showBadge: b.showBadge,
         showOnHome: b.showOnHome,
         autoArchiveDays: b.autoArchiveDays,
-    };
-}
-
-export function ruleFromView(r: RuleView, buckets: Bucket[]): Rule {
-    return {
-        id: r.id,
-        senderPattern: r.senderPattern,
-        bucketId: buckets.find(b => b.label === r.bucket)?.id ?? r.bucket,
-        createdAt: r.createdAt,
     };
 }

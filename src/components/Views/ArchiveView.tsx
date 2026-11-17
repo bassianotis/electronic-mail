@@ -1,18 +1,19 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import { motion, type PanInfo } from 'framer-motion';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Archive } from 'lucide-react';
 import { type Email } from '../../store/mailStore';
 import { useMail } from '../../context/MailContext';
 import { useDragDropActions } from '../../context/DragDropContext';
 import { useThreadList } from '../../hooks/useThreadList';
 import { cardFromThread } from '../../utils/emailMapper';
 import { formatListDate } from '../../utils/formatDate';
+import { ThreadLink } from './ThreadLink';
+import { Z } from '../../utils/layers';
 import { type Arrivals, useArrivals, useEntrance } from '../../hooks/useArrivals';
-import { AfterDelay, ArchiveRowSkeleton } from '../Loading/Skeletons';
+import { AfterDelay, ArchiveRowSkeleton, ViewFailure } from '../Loading/Skeletons';
 import { LoadMore } from '../Loading/LoadMore';
 import { usePublishList, type ListKey } from '../../hooks/conversationLists';
-import { DURATION, noNativeAnimation, tween } from '../../utils/motion';
+import { DURATION, leave, noNativeAnimation, tween } from '../../utils/motion';
 import { inDockStrip } from '../../utils/dropTargets';
 import { useDragLook } from '../../hooks/useDragLook';
 import { formatCount } from '../../utils/format';
@@ -33,7 +34,6 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
     const list = useThreadList(activeAccountId, folders.archive ? { location: folders.archive, withSentOnly: true } : null, 50);
     const cards = useMemo(() => list.threads.map(cardFromThread), [list.threads]);
     usePublishList('archive', cards, { total: list.count, hasMore: list.hasMore, loadMore: list.loadMore });
-    const emailCount = useMemo(() => cards.reduce((n, c) => n + (c.threadCount ?? 1), 0), [cards]);
     const arrivals = useArrivals(!list.loading, cards);
 
     // The Archive holds tens of thousands of conversations: only the rows near the screen are
@@ -65,44 +65,43 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
     };
 
     return (
-        <div style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-xl)', paddingBottom: '140px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
+        <div style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-8)', paddingBottom: '140px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-6)' }}>
                 <div>
-                    <h2 style={{ fontSize: 'var(--size-page-heading)', fontWeight: 'var(--weight-bold)', marginBottom: 'var(--space-xs)' }}>
+                    <h2 style={{ fontSize: 'var(--size-page)', fontWeight: 'var(--weight-medium)', marginBottom: 'var(--space-1)' }}>
                         Archive
                     </h2>
                 </div>
                 <span className="text-muted" style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCount(list.count)} threads{list.hasMore ? ` (${formatCount(cards.length)} loaded)` : ` (${formatCount(emailCount)} emails)`}
+                    {/* One way to count (rule W6): "1 thread", "1,284 threads" */}
+                    {formatCount(list.count)} {list.count === 1 ? 'thread' : 'threads'}
                 </span>
             </div>
 
             {list.loading && folders.archive ? (
-                <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                     <AfterDelay>
                         {[0, 1, 2, 3, 4, 5].map(i => <ArchiveRowSkeleton key={i} />)}
                     </AfterDelay>
                 </div>
             ) : list.error ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-3xl)', color: 'var(--color-text-muted)' }}>
-                    Couldn't load the archive: {list.error}
-                </div>
+                <ViewFailure what="the Archive" why={list.error} onRetry={list.retry} />
             ) : cards.length === 0 ? (
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     style={{
                         textAlign: 'center',
-                        padding: 'var(--space-3xl)',
-                        color: 'var(--color-text-muted)'
+                        padding: 'var(--space-16)',
+                        color: 'var(--text-3)'
                     }}
                 >
-                    <Archive size={48} style={{ marginBottom: 'var(--space-md)', opacity: 0.3 }} />
-                    <p>No archived emails</p>
+                    {/* One line, no illustration (rule T5), as "Nothing in the Inbox." (owner, Checkpoint B) */}
+                    <p>Nothing in the Archive.</p>
                 </motion.div>
             ) : (
                 <>
-                    <div ref={listRef} style={{ position: 'relative', height: virtualizer.getTotalSize() }}>
+                    <div ref={listRef} data-thread-list="" style={{ position: 'relative', height: virtualizer.getTotalSize() }}>
                         {virtualizer.getVirtualItems().map(row => {
                             const email = cards[row.index];
                             return (
@@ -117,7 +116,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
                                         // top, not a transform: a transform would make each row a layer of its own,
                                         // and the rows below would cover a card dragged out of it
                                         top: row.start - scroller.top,
-                                        paddingBottom: 'var(--space-md)'
+                                        paddingBottom: 'var(--space-4)'
                                     }}
                                 >
                                     <ArchiveItem
@@ -132,7 +131,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onSelectEmail }) => {
                         })}
                     </div>
                     <LoadMore list={list} skeletons={(
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                             {[0, 1, 2].map(i => <ArchiveRowSkeleton key={i} />)}
                         </div>
                     )} />
@@ -164,7 +163,7 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
             if (typeof ref === 'function') ref(el);
             else if (ref) ref.current = el;
         };
-        const look = useDragLook(cardRef, 0.6);
+        const look = useDragLook(cardRef);
         const enters = useEntrance(arrivals, email.id);
 
         const handleDragStart = () => {
@@ -286,77 +285,67 @@ export const ArchiveItem = React.forwardRef<HTMLDivElement, ArchiveItemProps>(
                 onDragEnd={handleDragEnd}
                 whileDrag={look.whileDrag}
                 onClick={handleClick}
+                data-thread-card=""
                 initial={enters ? { opacity: 0, scale: 0.95 } : false}
                 onUpdate={noNativeAnimation}
                 animate={look.animate({ opacity: 1, scale: 1 })}
-                exit={{ opacity: 0, scale: 0.97, transition: tween(DURATION.mid) }}
+                exit={{ opacity: 0, scale: 0.97, transition: leave(DURATION.mid) }}
                 transition={tween(DURATION.mid)}
                 style={{
-                    backgroundColor: 'var(--surface-card)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 'var(--card-pad)',
+                    backgroundColor: 'var(--surface-1)',
+                    border: '1px solid var(--line-1)',
+                    borderRadius: 'var(--radius-3)',
+                    padding: 'var(--card-padding)',
                     cursor: isSentOnly ? 'pointer' : 'grab',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 'var(--space-sm)',
+                    gap: 'var(--space-2)',
                     position: 'relative',
-                    transformOrigin: look.origin,
+                    originX: look.originX,
+                    originY: look.originY,
                     x: look.x,
                     y: look.y,
-                    zIndex: look.raised ? 9999 : undefined
+                    zIndex: look.raised ? Z.drag.card : undefined
                 }}
             >
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: '4px' }}>
-                            <span
-                                style={{
-                                    fontSize: 'var(--size-list-sender)',
-                                    fontWeight: 'var(--weight-semibold)',
-                                    color: 'var(--color-text-main)',
-                                    cursor: email.senderAddress ? 'pointer' : 'default'
-                                }}
-                                onClick={(e) => {
-                                    if (email.senderAddress) {
-                                        e.stopPropagation();
-                                        setShowSenderEmail(!showSenderEmail);
-                                    }
-                                }}
-                            >
-                                {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
-                            </span>
-                            {threadCount && threadCount > 1 && (
-                                <span style={{
-                                    backgroundColor: 'var(--thread-badge)',
-                                    color: 'var(--thread-badge-text)',
-                                    fontSize: 'var(--font-size-2xs)',
-                                    fontWeight: 'var(--weight-semibold)',
-                                    padding: 'var(--thread-badge-pad)',
-                                    borderRadius: 'var(--radius-full)',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    height: '16px',
-                                    minWidth: '16px',
-                                    fontVariantNumeric: 'tabular-nums'
-                                }}>
-                                    {formatCount(threadCount)}
-                                </span>
-                            )}
-                        </div>
-                        <h3 style={{
-                            fontSize: 'var(--size-list-title)',
-                            fontWeight: 'var(--weight-semibold)',
-                            color: 'var(--color-text-main)',
-                            margin: '4px 0'
-                        }}>
-                            {email.subject}
-                        </h3>
-                    </div>
-                    <div style={{ textAlign: 'right', fontSize: 'var(--size-list-date)', color: 'var(--color-text-faint)', fontVariantNumeric: 'var(--date-numerals)', minWidth: '120px' }}>
-                        <div>{isSentOnly ? 'Sent' : 'Received'} {formatListDate(email.date)}</div>
-                    </div>
+                {/* The Inbox's order (board P1, change 6; owner, 2026-11-12): the subject first, then the
+                    sender and the count, the date on the right */}
+                <h3 style={{
+                    fontSize: 'var(--size-title)',
+                    fontWeight: 'var(--weight-medium)',
+                    color: 'var(--text-1)',
+                    margin: 0
+                }}>
+                    <ThreadLink threadId={email.threadId} onOpen={handleClick}>{email.subject}</ThreadLink>
+                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', fontSize: 'var(--size-body)', color: 'var(--text-3)' }}>
+                    <span
+                        style={{
+                            fontWeight: 'var(--weight-medium)',
+                            color: 'var(--text-3)',
+                            minWidth: 0,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            cursor: email.senderAddress ? 'pointer' : 'default'
+                        }}
+                        onClick={(e) => {
+                            if (email.senderAddress) {
+                                e.stopPropagation();
+                                setShowSenderEmail(!showSenderEmail);
+                            }
+                        }}
+                    >
+                        {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
+                    </span>
+                    {threadCount && threadCount > 1 && (
+                        <span style={{ color: 'var(--text-4)', fontSize: 'var(--size-caption)', fontWeight: 'var(--weight-medium)', fontVariantNumeric: 'tabular-nums' }}>
+                            {formatCount(threadCount)}
+                        </span>
+                    )}
+                    <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 'var(--size-caption)', color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
+                        {isSentOnly ? 'Sent' : 'Received'} {formatListDate(email.date)}
+                    </span>
                 </div>
 
             </motion.div>

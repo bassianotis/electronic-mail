@@ -9,7 +9,7 @@
 import type { Email } from '../store/mailStore';
 import type { Address, MessageBody } from '../api/types';
 import { loadBody } from '../api/bodies';
-import { bodyHtml } from './emailMapper';
+import { NO_SUBJECT, bodyHtml } from './emailMapper';
 import { forwardSubject, quoteForForward, quoteForReply, replySubject } from './compose';
 
 export type ReplyType = 'reply' | 'replyAll' | 'forward';
@@ -70,9 +70,11 @@ export async function buildReply(accountId: string, msg: Email, type: ReplyType,
     }
     const original = { ...msg, body: body ? bodyHtml(body) : msg.body, to: h?.to, cc: h?.cc };
     const quote = type === 'forward' ? quoteForForward(original, body?.text ?? null) : quoteForReply(original, body?.text ?? null);
+    // The screens' "No subject" is a name for none, not a subject: the answer doesn't carry it
+    const subject = msg.subject === NO_SUBJECT && !h?.subject ? '' : msg.subject;
     return {
         to, cc,
-        subject: type === 'forward' ? forwardSubject(msg.subject) : replySubject(msg.subject),
+        subject: type === 'forward' ? forwardSubject(subject) : replySubject(subject),
         quotedHtml: quote.html,
         quotedText: quote.text,
         replyTo: type === 'forward' ? undefined : msg.msgKey,
@@ -83,7 +85,7 @@ export async function buildReply(accountId: string, msg: Email, type: ReplyType,
 
 /** The composer's title: the subject, or "New message" until a new message has one. */
 export const composerTitle = (d: { type: ReplyType | null; subject: string }) =>
-    d.type ? d.subject || '(No subject)' : d.subject || 'New message';
+    d.type ? d.subject || NO_SUBJECT : d.subject || 'New message';
 
 /** An attachment still on its way to the engine (Send waits for it). */
 export const isUploading = (a: { id?: string; error?: string }) => !a.id && !a.error;

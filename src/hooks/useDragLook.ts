@@ -1,7 +1,13 @@
 /**
  * How a dragged card looks, lands and goes home, the same for the Inbox, Up next, buckets and Archive
  * (docs/design/motion-audit.md, problem c):
- * - picked up, it shrinks around the point where it was grabbed, so it stays under the pointer, at 85%;
+ * - picked up, it shrinks to 50% (everywhere: board F-motion) around the point where it was grabbed,
+ *   so it stays under the pointer, at 85% opacity; with Reduce motion on it keeps its size (fades only).
+ *   That point goes to framer as `originX`/`originY` (fractions of the card), never as a CSS
+ *   transform-origin: framer measures a draggable card each time it redraws mid-drag (entering or
+ *   leaving a target), works out its size at rest from the origin it knows, and moves the drag by
+ *   any difference. With the grab point only in CSS it assumed the centre, and a card grabbed near
+ *   its edge jumped ~60px under the pointer on touching the dock (Checkpoint B, 2026-11-15);
  * - dropped on a target, the move happens and the card fades out where it landed (150ms), with no
  *   trip home;
  * - dropped on nothing, it goes back to its slot on the app's curve (200ms), raised above the other
@@ -20,15 +26,17 @@
  */
 import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import { animate, useMotionValue, useReducedMotion, type TargetAndTransition } from 'framer-motion';
-import { DURATION, tween } from '../utils/motion';
+import { DRAG_SCALE, DURATION, tween } from '../utils/motion';
 
 type Phase = 'rest' | 'dragging' | 'returning' | 'dropped';
 
 /** A dropped card still here after this long wasn't moved (the server refused): back to its slot. */
 const DROP_GIVE_UP_MS = 2000;
 
-export function useDragLook(card: RefObject<HTMLElement | null>, scale: number, enterFrom = 0) {
+export function useDragLook(card: RefObject<HTMLElement | null>, enterFrom = 0) {
     const reduce = useReducedMotion();
+    // Reduce motion: nothing scales (styles/tokens.css, --drag-scale)
+    const scale = reduce ? 1 : DRAG_SCALE;
     const x = useMotionValue(0);
     const y = useMotionValue(reduce ? 0 : enterFrom);
 
@@ -36,14 +44,14 @@ export function useDragLook(card: RefObject<HTMLElement | null>, scale: number, 
     useEffect(() => {
         if (y.get() !== 0) void animate(y, 0, tween(DURATION.slow));
     }, [y]);
-    const [origin, setOrigin] = useState<string | undefined>(undefined);
+    const [origin, setOrigin] = useState<{ x: number; y: number } | undefined>(undefined);
     const [phase, setPhase] = useState<Phase>('rest');
     const [aimed, setAimed] = useState(false);
 
     /** Pointer down (before the drag starts): where the card was grabbed. */
     const grab = useCallback((e: { clientX: number; clientY: number }) => {
         const r = card.current?.getBoundingClientRect();
-        if (r) setOrigin(`${e.clientX - r.left}px ${e.clientY - r.top}px`);
+        if (r && r.width && r.height) setOrigin({ x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
     }, [card]);
 
     /** The drag began. */
@@ -82,8 +90,8 @@ export function useDragLook(card: RefObject<HTMLElement | null>, scale: number, 
     const whileDrag = useMemo<TargetAndTransition>(() => ({
         scale,
         opacity: 0.85,
-        borderRadius: 'var(--radius-lg)',
-        boxShadow: 'var(--shadow-floating)',
+        borderRadius: 'var(--radius-3)',
+        boxShadow: 'none',
         cursor: 'grabbing',
         transition: { default: tween(DURATION.slow), opacity: tween(DURATION.fast) },
     }), [scale]);
@@ -95,7 +103,9 @@ export function useDragLook(card: RefObject<HTMLElement | null>, scale: number, 
     const animateTo = useCallback((usual: TargetAndTransition) => (showsDropped ? droppedLook : usual), [showsDropped, droppedLook]);
 
     return {
-        origin, grab, start, aim, land, x, y, whileDrag, animate: animateTo,
+        /** Where it was grabbed, for the card's style (see above): undefined until it's first grabbed. */
+        originX: origin?.x, originY: origin?.y,
+        grab, start, aim, land, x, y, whileDrag, animate: animateTo,
         /** Above every other card: while dragged, going home, or fading where it was dropped. */
         raised: phase !== 'rest',
     };

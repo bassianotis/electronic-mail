@@ -16,7 +16,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
         <div className="dashboard-layout" style={{
             display: 'flex',
             height: '100vh',
-            backgroundColor: 'var(--color-bg)',
+            backgroundColor: 'var(--bg-page)',
             overflow: 'hidden'
         }}>
             {/* The accounts, as tabs on the window's edge */}
@@ -34,7 +34,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
                         flex: 1,
                         overflowY: 'auto',
                         position: 'relative',
-                        padding: '0 var(--space-lg) var(--space-3xl)',
+                        padding: '0 var(--space-6) var(--space-16)',
                     }}>
                         <div className="container" style={{ height: '100%' }}>
                             {children}

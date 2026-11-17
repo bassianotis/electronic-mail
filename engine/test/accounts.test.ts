@@ -88,12 +88,19 @@ test('accounts added and removed while running; the event stream hears about new
         await until('the open stream heard about it', () => events.join('').includes('event: accounts') && events.join('').includes(account.id));
         assert.equal((await post(`/accounts/${account.id}/bad`, {})).status, 404);
 
+        // What Mail keeps for an account besides its cache: a rule and a bucket's look
+        rules.add(account.id, 'news@example.com', 'Reads');
+        app.db.prepare(`INSERT INTO bucket_meta (account_id, name, color, emoji, sort_order, show_badge, show_on_home) VALUES (?, 'Reads', '#95a5a6', NULL, 0, 0, 0)`).run(account.id);
         const removed = await fetch(`${base}/accounts/${account.id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         assert.equal(removed.status, 200);
         assert.equal(manager.workers.size, 0);
         assert.equal(accounts.list().length, 0);
-        for (const table of ['folder', 'message', 'placement', 'thread']) {
+        // Nothing left behind (owner, 2026-11-14): every cached table, the search index, and the app's own
+        for (const table of ['folder', 'message', 'placement', 'thread', 'thread_link', 'body', 'task', 'sweep', 'message_fts']) {
             assert.equal((store.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get() as { n: number }).n, 0, `${table} forgotten`);
+        }
+        for (const table of ['rules', 'bucket_meta', 'outbox']) {
+            assert.equal((app.db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE account_id = ?`).get(account.id) as { n: number }).n, 0, `${table} forgotten`);
         }
         const st = await phone.status('INBOX', { messages: true });
         assert.equal(st && st.messages, 1, 'the mailbox itself is untouched');

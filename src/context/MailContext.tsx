@@ -5,12 +5,15 @@
  * numbers on screen are always the engine's (docs/architecture.md, rule 2).
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, acct, ApiError, downloadFile, errorText, paths, SESSION_RESTORED_EVENT } from '../api/client';
+import { api, acct, ApiError, couldnt, downloadFile, paths, urls, SESSION_RESTORED_EVENT } from '../api/client';
+import { plainWords } from '../api/engineWords';
+
+/** How long Delete bucket's Undo lasts (an action's notice: 6s); the bucket is deleted after it. */
 import { engineEvents, useAccountState } from '../api/events';
 import { cancelMoving, markMoving, settleMoving } from '../api/moving';
 import type { Account, BucketView, DraftSummary, FolderInfo, OutboxItem, SweepNotice } from '../api/types';
 import type { Bucket } from '../store/mailStore';
-import { bucketFromView } from '../utils/emailMapper';
+import { NO_SUBJECT, bucketFromView } from '../utils/emailMapper';
 import { formatCount } from '../utils/format';
 
 export interface ToastAction {
@@ -23,8 +26,13 @@ export interface Toast {
     message: ReactNode;
     tone?: 'info' | 'error';
     actions?: ToastAction[];
-    /** Milliseconds before it goes away by itself; null keeps it until dealt with. */
+    /** How long it stays (rule N2, the shared Notice): by default 8s with an action, 4s without, the
+     * time stopped while it's hovered or focused. null: until it's acted on or dismissed (a decision
+     * waits on it). A number: a deadline its action stops working at (the send's hold), not stopped. */
     durationMs?: number | null;
+    /** When it goes without its action pressed: run out, dismissed, or replaced by a newer one.
+     * An Undo that holds something back (Delete bucket, Discard draft) does it here. */
+    onDone?: () => void;
 }
 
 export interface Folders {
@@ -102,7 +110,8 @@ interface MailContextType {
 
     toasts: Toast[];
     showToast: (toast: Omit<Toast, 'id'>) => number;
-    dismissToast: (id: number) => void;
+    /** `acted`: its action was pressed (then its onDone doesn't run) */
+    dismissToast: (id: number, acted?: boolean) => void;
 
     /** Saves a file the engine serves (an attachment, the settings export); trouble shows as a notice. */
     download: (url: string, fallbackName: string) => void;
@@ -130,15 +139,25 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const toastSeq = useRef(0);
     const stateToken = useAccountState(activeAccountId);
 
-    // ---- toasts
-    const dismissToast = useCallback((id: number) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+    // ---- toasts: one at a time (rule N1), the last in the list. The newest replaces the last; one
+    // waiting on a decision (durationMs null) stays underneath and shows again when it's on top.
+    // The shared Notice (ToastHost) keeps the time, stopped while it's hovered or focused (N2).
+    const toastsNow = useRef<Toast[]>([]);
+    const dismissToast = useCallback((id: number, acted = false) => {
+        const gone = toastsNow.current.find(t => t.id === id);
+        if (!gone) return;
+        toastsNow.current = toastsNow.current.filter(t => t.id !== id);
+        setToasts(toastsNow.current);
+        if (!acted) gone.onDone?.();
+    }, []);
     const showToast = useCallback((toast: Omit<Toast, 'id'>) => {
         const id = ++toastSeq.current;
-        setToasts(prev => [...prev.slice(-2), { ...toast, id }]);
-        const duration = toast.durationMs === undefined ? (toast.tone === 'error' ? 8000 : toast.actions?.length ? 6000 : 4000) : toast.durationMs;
-        if (duration !== null) setTimeout(() => dismissToast(id), duration);
+        const replaced = toastsNow.current.filter(t => t.durationMs !== null);
+        toastsNow.current = [...toastsNow.current.filter(t => t.durationMs === null), { ...toast, id }];
+        setToasts(toastsNow.current);
+        replaced.forEach(t => t.onDone?.());
         return id;
-    }, [dismissToast]);
+    }, []);
 
     // ---- accounts
     const setActiveAccountId = useCallback((id: string) => {
@@ -230,7 +249,12 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return () => window.removeEventListener(SESSION_RESTORED_EVENT, reload);
     }, [refreshData]);
 
-    const buckets = useMemo(() => bucketViews.map(bucketFromView), [bucketViews]);
+    // A bucket being deleted is hidden while its notice offers Undo (deleteBucket, below)
+    const [hiddenBuckets, setHiddenBuckets] = useState<string[]>([]);
+    const buckets = useMemo(
+        () => bucketViews.filter(b => !hiddenBuckets.includes(`${activeAccountId}\n${b.name}`)).map(bucketFromView),
+        [bucketViews, hiddenBuckets, activeAccountId],
+    );
     const draftThreadIds = useMemo(() => new Set(drafts.map(d => d.threadId).filter((t): t is string => !!t)), [drafts]);
     const activeAccount = accounts.find(a => a.id === activeAccountId) ?? null;
 
@@ -270,7 +294,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return r.taskId;
         } catch (err) {
             cancelMoving(threadId);
-            showToast({ message: `Couldn't move it: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('move it', err), tone: 'error' });
             return null;
         }
     }, [activeAccountId, targetPath, showToast]);
@@ -281,7 +305,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const r = await api.post<{ undoTaskId: number | null; state: string }>(`${acct(activeAccountId)}/tasks/${taskId}/undo`);
             engineEvents.noteState(activeAccountId, r.state);
         } catch (err) {
-            showToast({ message: `Couldn't undo: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('undo', err), tone: 'error' });
         }
     }, [activeAccountId, showToast]);
 
@@ -295,7 +319,8 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // A move the server refused is rolled back by the engine; say so instead of failing silently.
     useEffect(() => engineEvents.onTask(t => {
-        if (t.status === 'failed') showToast({ message: `A move didn't go through: ${t.error ?? 'the mail server refused it'}`, tone: 'error' });
+        // In plain words (phase 3, item 1); the mail server's own refusals as one line
+        if (t.status === 'failed') showToast({ message: `A move didn't go through: ${plainWords(t.error ?? '', 'the mail server refused it')}`, tone: 'error' });
     }), [showToast]);
 
     // ---- buckets and rules
@@ -305,7 +330,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             await api.post(`${acct(activeAccountId)}/buckets`, { name: label, color, emoji: emoji || null, showBadge: !!showBadge, showOnHome: !!showOnHome, autoArchiveDays: autoArchiveDays ?? null });
             await loadAccountData(activeAccountId);
         } catch (err) {
-            showToast({ message: `Couldn't create the bucket: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('create the bucket', err), tone: 'error' });
         }
     }, [activeAccountId, loadAccountData, showToast]);
 
@@ -323,7 +348,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             await api.patch(paths.bucket(activeAccountId, bucket.label), body);
             await loadAccountData(activeAccountId);
         } catch (err) {
-            showToast({ message: `Couldn't change the bucket: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('change the bucket', err), tone: 'error' });
         }
     }, [activeAccountId, buckets, loadAccountData, showToast]);
 
@@ -342,7 +367,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const r = await api.post<{ state: string }>(`${acct(accountId)}/auto-archived/undo`, { ids: notice.ids });
                     engineEvents.noteState(accountId, r.state);
                 } catch (err) {
-                    showToast({ message: `Couldn't undo: ${errorText(err)}`, tone: 'error' });
+                    showToast({ message: couldnt('undo', err), tone: 'error' });
                 }
             };
             showToast({
@@ -350,22 +375,54 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     ? <>Archived {items} from <strong>{notice.buckets[0]}</strong></>
                     : <>Archived {items} from {notice.buckets.length} buckets</>,
                 actions: notice.undoable ? [{ label: 'Undo', onClick: () => void undo() }] : undefined,
-                durationMs: 10_000,
             });
             void api.post(`${acct(accountId)}/auto-archived/seen`, { ids: notice.ids }).catch(() => { /* shown again next time */ });
         }).catch(() => { /* asked again at the next change */ });
     }, [activeAccountId, stateToken, showToast]);
 
+    // Delete bucket (rule A1): at once, with Undo, never a confirm(). The engine can't undo removing a
+    // bucket (its mail moves to the Archive; its look and rules go), so while the notice offers Undo
+    // the bucket is only hidden; the server deletes it when the notice goes without Undo (its time
+    // runs out, it's dismissed or replaced), or as the page closes (as Discard draft does).
     const deleteBucket = useCallback(async (id: string) => {
         const bucket = buckets.find(b => b.id === id);
         if (!activeAccountId || !bucket) return;
-        try {
-            const r = await api.del<{ movedToArchive: number }>(paths.bucket(activeAccountId, bucket.label));
-            await loadAccountData(activeAccountId);
-            showToast({ message: r.movedToArchive ? `Deleted ${bucket.label}; its mail is in the Archive.` : `Deleted ${bucket.label}.` });
-        } catch (err) {
-            showToast({ message: `Couldn't delete the bucket: ${errorText(err)}`, tone: 'error' });
-        }
+        const accountId = activeAccountId, name = bucket.label, key = `${accountId}\n${name}`;
+        const path = paths.bucket(accountId, name);
+        setHiddenBuckets(list => [...list, key]);
+        const unhide = () => setHiddenBuckets(list => list.filter(k => k !== key));
+        let settled = false;
+        const onPageHide = () => {
+            if (settled) return;
+            settled = true;
+            void fetch(urls.of(path), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
+        };
+        const deleteNow = async () => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener('pagehide', onPageHide);
+            try {
+                await api.del(path);
+                await loadAccountData(accountId);
+            } catch (err) {
+                showToast({ message: couldnt('delete the bucket', err), tone: 'error' });
+            } finally {
+                unhide();
+            }
+        };
+        window.addEventListener('pagehide', onPageHide);
+        showToast({
+            message: bucket.count ? `Deleted ${name}; its mail is in the Archive.` : `Deleted ${name}.`,
+            onDone: () => void deleteNow(),
+            actions: [{
+                label: 'Undo', onClick: () => {
+                    if (settled) return;
+                    settled = true;
+                    window.removeEventListener('pagehide', onPageHide);
+                    unhide();
+                },
+            }],
+        });
     }, [activeAccountId, buckets, loadAccountData, showToast]);
 
     const reorderBuckets = useCallback(async (bucketIds: string[]) => {
@@ -377,7 +434,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const r = await api.put<{ buckets: BucketView[] }>(`${acct(activeAccountId)}/bucket-order`, { names });
             setBucketViews(r.buckets);
         } catch (err) {
-            showToast({ message: `Couldn't save the new order: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('save the new order', err), tone: 'error' });
             await loadAccountData(activeAccountId);
         }
     }, [activeAccountId, buckets, loadAccountData, showToast]);
@@ -393,7 +450,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         try {
             await api.post(`${acct(accountId)}/outbox/${encodeURIComponent(id)}/retry`);
         } catch (err) {
-            showToast({ message: `Couldn't send it again: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('send it again', err), tone: 'error' });
         }
     }, [showToast]);
 
@@ -401,7 +458,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         try {
             await api.del(`${acct(accountId)}/outbox/${encodeURIComponent(id)}`);
         } catch (err) {
-            showToast({ message: `Couldn't discard it: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('discard it', err), tone: 'error' });
         }
     }, [showToast]);
 
@@ -445,13 +502,13 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (!from) return null;
         try {
             const { item } = await api.post<{ item: OutboxItem }>(`${acct(from)}/outbox`, message);
-            subjects.current.set(item.id, message.subject || '(no subject)');
+            subjects.current.set(item.id, message.subject || NO_SUBJECT);
             if (undo) showToast({ message: 'Sending…', actions: [{ label: 'Undo', onClick: () => undo(item) }], durationMs: message.holdMs ?? 5000 });
             else showToast({ message: `Sending ${describeItem(item.id)}…` });
             return item;
         } catch (err) {
             if (err instanceof ApiError && err.status === 0) return 'unreachable';
-            showToast({ message: `Couldn't send: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('send', err), tone: 'error' });
             return null;
         }
     }, [activeAccountId, showToast]);
@@ -459,7 +516,7 @@ export const MailProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const download = useCallback((url: string, fallbackName: string) => {
         downloadFile(url, fallbackName).catch(err => {
             if (err instanceof ApiError && err.status === 401) return; // the login screen is already up
-            showToast({ message: `Couldn't download ${fallbackName}: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt(`download ${fallbackName}`, err), tone: 'error' });
         });
     }, [showToast]);
 

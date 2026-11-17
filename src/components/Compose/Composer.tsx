@@ -12,10 +12,10 @@
  * - From: a menu of your accounts (those without sending set up greyed out); changing it moves the
  *   draft to that account and sends from there.
  * ⌘↩ (Ctrl+Enter) sends. Keys pressed inside never reach the conversation's own keys (arrows flip
- * cards, Escape closes).
+ * cards), except Esc (rule L4): it closes a menu in it, else the composer, keeping the draft.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, CornerUpLeft, File as FileIcon, Forward, Minimize2, Paperclip, Reply, ReplyAll, Send, Trash2, X } from 'lucide-react';
+import { ChevronDown, CornerUpLeft, File as FileIcon, Forward, Minimize2, Paperclip, Reply, ReplyAll, Send, Trash2, X } from 'lucide-react';
 import { useComposer } from '../../context/ComposerContext';
 import { useMail } from '../../context/MailContext';
 import { composerTitle, isUploading, type ReplyType } from '../../utils/replyDraft';
@@ -23,6 +23,9 @@ import { RecipientField } from './RecipientField';
 import { fieldLabel, fieldRow } from './styles';
 import { formatSize } from '../../utils/format';
 import { formatDate } from '../../utils/formatDate';
+import { Menu, MenuItem } from '../../ui/Menu';
+import { Button, IconButton } from '../../ui/Button';
+import { Tooltip } from '../../ui/Tooltip';
 
 const TYPES: { type: ReplyType; label: string; Icon: typeof Reply }[] = [
     { type: 'reply', label: 'Reply', Icon: Reply },
@@ -33,53 +36,15 @@ const TYPES: { type: ReplyType; label: string; Icon: typeof Reply }[] = [
 const linkButton: React.CSSProperties = {
     border: 0,
     background: 'transparent',
-    padding: '4px 8px',
+    padding: 'var(--space-1) var(--space-2)',
     fontFamily: 'inherit',
-    fontSize: 'var(--font-size-sm)',
-    color: 'var(--color-text-muted)',
+    fontSize: 'var(--size-body)',
+    color: 'var(--text-3)',
     cursor: 'pointer'
 };
 
-const roundButton: React.CSSProperties = {
-    width: '32px',
-    height: '32px',
-    flexShrink: 0,
-    borderRadius: 'var(--radius-full)',
-    border: 0,
-    background: 'transparent',
-    color: 'var(--color-text-muted)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer'
-};
-
-const menu: React.CSSProperties = {
-    position: 'absolute',
-    zIndex: 25,
-    background: 'var(--surface-raised)',
-    border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-md)',
-    boxShadow: 'var(--shadow-menu)',
-    padding: '4px'
-};
-
-const menuItem = (on: boolean): React.CSSProperties => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    width: '100%',
-    padding: '8px',
-    border: 0,
-    borderRadius: 'max(4px, calc(var(--radius-md) - 4px))',
-    background: on ? 'var(--color-bg-subtle)' : 'transparent',
-    fontFamily: 'inherit',
-    fontSize: 'var(--font-size-sm)',
-    color: 'var(--color-text-main)',
-    textAlign: 'left',
-    cursor: 'pointer'
-});
-
+// The reply-type and From menus (the shared Menu), placed inside the composer
+const menuPlace: React.CSSProperties = { position: 'absolute', zIndex: 25 /* layer: popover, local (inside the composer) */ };
 
 export const Composer: React.FC<{
     place?: 'docked' | 'corner';
@@ -90,7 +55,8 @@ export const Composer: React.FC<{
     const { accounts } = useMail();
     const [typeOpen, setTypeOpen] = useState(false);
     const [fromOpen, setFromOpen] = useState(false);
-    const fromMenuRef = useRef<HTMLDivElement>(null);
+    const typeButtonRef = useRef<HTMLButtonElement>(null);
+    const fromButtonRef = useRef<HTMLButtonElement>(null);
     // ⌘↩ presses Send once a typed address has become a chip (so Send sees it)
     const sendButtonRef = useRef<HTMLButtonElement>(null);
     const [dragging, setDragging] = useState(false);
@@ -99,7 +65,6 @@ export const Composer: React.FC<{
     const sectionRef = useRef<HTMLElement>(null);
     const bodyRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const typeMenuRef = useRef<HTMLDivElement>(null);
     const draftId = draft?.id;
 
     // The message box opens ready to type, the cursor at the end.
@@ -123,16 +88,8 @@ export const Composer: React.FC<{
         panel.scrollTo({ top, behavior: 'instant' });
     }, [draft?.body, draftId]);
 
-    // The reply-type and From menus close on a click anywhere else.
-    useEffect(() => {
-        if (!typeOpen && !fromOpen) return;
-        const away = (e: MouseEvent) => {
-            if (!typeMenuRef.current?.contains(e.target as Node)) setTypeOpen(false);
-            if (!fromMenuRef.current?.contains(e.target as Node)) setFromOpen(false);
-        };
-        document.addEventListener('mousedown', away);
-        return () => document.removeEventListener('mousedown', away);
-    }, [typeOpen, fromOpen]);
+    // The reply-type and From menus: Esc closes the open one only (rule L4) and the focus goes back to
+    // its button; arrows move; Tab leaves; a click anywhere else closes it (the shared Menu)
 
     if (!draft) return null;
 
@@ -141,7 +98,7 @@ export const Composer: React.FC<{
     const answered = draft.original?.email;
     const targetLink = onShowTarget && isReply && answered ? (
         <button type="button" className="em-target-link" onClick={onShowTarget} title="Show it above">
-            <CornerUpLeft size={13} strokeWidth={1.5} aria-hidden="true" style={{ flexShrink: 0 }} />
+            <CornerUpLeft size={13} aria-hidden="true" style={{ flexShrink: 0 }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {draft.type === 'forward' ? 'Forwarding' : 'Replying to'} {answered.mailbox === 'Sent' || myAddresses.includes((answered.senderAddress ?? '').toLowerCase()) ? 'Me' : answered.sender}, {formatDate(answered.date)}
             </span>
@@ -180,15 +137,13 @@ export const Composer: React.FC<{
             : status === 'saved' ? 'Saved'
                 : keptLocally ? 'Kept on this computer'
                     : '';
-    // Send can't be pressed again while it's going, uploading, or waiting for the server
-    const sendOff = uploading || sending || waiting;
 
     return (
         <section
             ref={sectionRef}
             aria-label={isReply ? 'Reply' : 'New message'}
             onKeyDown={e => {
-                e.stopPropagation();
+                if (e.key !== 'Escape') e.stopPropagation();
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
                     setTimeout(() => sendButtonRef.current?.click());
@@ -214,62 +169,55 @@ export const Composer: React.FC<{
                 height: '100%',
                 boxSizing: 'border-box',
                 background: 'var(--surface-raised)',
-                outline: dragging ? '2px dashed var(--color-action)' : 'none',
+                outline: dragging ? '2px dashed var(--action)' : 'none',
                 outlineOffset: '-4px'
             }}
         >
-            {place === 'docked' && <header style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '48px', padding: '0 8px 0 20px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+            {place === 'docked' && <header style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', height: '48px', padding: '0 var(--space-2) 0 var(--space-5)', borderBottom: '1px solid var(--line-1)', flexShrink: 0 }}>
                 <h2 style={{
                     margin: 0,
                     flex: 1,
                     minWidth: 0,
-                    fontSize: 'var(--font-size-base)',
-                    fontWeight: 'var(--weight-bold)',
-                    color: !isReply && !draft.subject ? 'var(--color-text-muted)' : 'var(--color-text-main)',
+                    fontSize: 'var(--size-large)',
+                    fontWeight: 'var(--weight-medium)',
+                    color: !isReply && !draft.subject ? 'var(--text-3)' : 'var(--text-1)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis'
                 }}>
                     {title}
                 </h2>
-                <button
-                    type="button"
-                    title="Move to the corner and keep using the app"
-                    aria-label="Move to the corner"
-                    onClick={() => update({ place: 'corner' }, false)}
-                    className="em-icon-button"
-                    style={roundButton}
-                >
-                    <Minimize2 size={16} aria-hidden="true" />
-                </button>
+                <IconButton label="Move to the corner" icon={<Minimize2 size={16} aria-hidden="true" />} onClick={() => update({ place: 'corner' }, false)} />
             </header>}
 
-            <div style={{ position: 'relative', padding: '0 20px', fontSize: 'var(--font-size-sm)', flexShrink: 0 }}>
+            <div style={{ position: 'relative', padding: '0 var(--space-5)', fontSize: 'var(--size-body)', flexShrink: 0 }}>
                 {draft.expanded && (
                     <div style={fieldRow}>
                         <span style={{ flex: `0 0 ${gutter}px` }} />
                         <span style={fieldLabel}>From</span>
                         <button
+                            ref={fromButtonRef}
                             type="button"
                             aria-haspopup="menu"
                             aria-expanded={fromOpen}
                             onClick={() => { setFromOpen(open => !open); setTypeOpen(false); }}
+                            onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setFromOpen(true); setTypeOpen(false); } }}
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '8px',
-                                padding: '4px 8px',
+                                gap: 'var(--space-2)',
+                                padding: 'var(--space-1) var(--space-2)',
                                 marginLeft: '-8px',
                                 border: 0,
-                                borderRadius: 'var(--radius-control)',
-                                background: fromOpen ? 'var(--color-bg-subtle)' : 'transparent',
+                                borderRadius: 'var(--radius-2)',
+                                background: fromOpen ? 'var(--surface-1)' : 'transparent',
                                 fontFamily: 'inherit',
-                                fontSize: 'var(--font-size-sm)',
-                                color: 'var(--color-text-main)',
+                                fontSize: 'var(--size-body)',
+                                color: 'var(--text-1)',
                                 cursor: 'pointer'
                             }}
                         >
-                            {from?.displayName && <>{from.displayName} </>}<span style={{ color: 'var(--color-text-muted)' }}>{from?.email}</span>
+                            {from?.displayName && <>{from.displayName} </>}<span style={{ color: 'var(--text-3)' }}>{from?.email}</span>
                             <ChevronDown size={14} aria-hidden="true" />
                         </button>
                     </div>
@@ -281,30 +229,33 @@ export const Composer: React.FC<{
                     onChange={to => update({ to })}
                     gutter={gutter}
                     gutterContent={isReply && draft.original?.email ? (
-                        <button
-                            type="button"
-                            aria-haspopup="menu"
-                            aria-expanded={typeOpen}
-                            title={`${current.label}: change to Reply, Reply all or Forward`}
-                            aria-label={`${current.label}, change`}
-                            onClick={() => setTypeOpen(open => !open)}
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '2px',
-                                height: '28px',
-                                padding: '0 4px 0 8px',
-                                marginLeft: '-8px',
-                                border: 0,
-                                borderRadius: 'var(--radius-control)',
-                                background: typeOpen ? 'var(--color-bg-subtle)' : 'transparent',
-                                color: 'var(--color-text-muted)',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <current.Icon size={16} aria-hidden="true" />
-                            <ChevronDown size={14} aria-hidden="true" />
-                        </button>
+                        <Tooltip content={`${current.label}: change to Reply, Reply all or Forward`}>
+                            <button
+                                ref={typeButtonRef}
+                                type="button"
+                                aria-haspopup="menu"
+                                aria-expanded={typeOpen}
+                                aria-label={`${current.label}, change`}
+                                onClick={() => setTypeOpen(open => !open)}
+                                onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setTypeOpen(true); } }}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                    height: '28px',
+                                    padding: '0 var(--space-1) 0 var(--space-2)',
+                                    marginLeft: '-8px',
+                                    border: 0,
+                                    borderRadius: 'var(--radius-2)',
+                                    background: typeOpen ? 'var(--surface-1)' : 'transparent',
+                                    color: 'var(--text-3)',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <current.Icon size={16} aria-hidden="true" />
+                                <ChevronDown size={14} aria-hidden="true" />
+                            </button>
+                        </Tooltip>
                     ) : null}
                     onActivate={isReply ? expand : undefined}
                     placeholder="Add people"
@@ -336,75 +287,54 @@ export const Composer: React.FC<{
                             style={{
                                 flex: 1,
                                 minWidth: '120px',
-                                border: 0,
-                                outline: 'none',
+                                border: 0, // edgeless; the focus ring is the page's (rule K3)
                                 background: 'transparent',
                                 fontFamily: 'inherit',
-                                fontSize: 'var(--font-size-sm)',
-                                fontWeight: 'var(--weight-semibold)',
-                                color: 'var(--color-text-main)',
-                                padding: '4px 0'
+                                fontSize: 'var(--size-body)',
+                                fontWeight: 'var(--weight-medium)',
+                                color: 'var(--text-1)',
+                                padding: 'var(--space-1) 0'
                             }}
                         />
                     </div>
                 )}
 
                 {fromOpen && (
-                    <div ref={fromMenuRef} role="menu" aria-label="Send from" style={{ ...menu, left: `${gutter + 70}px`, top: '40px', width: '300px' }}
-                        onKeyDown={e => { if (e.key === 'Escape') setFromOpen(false); }}>
+                    <Menu label="Send from" anchor={fromButtonRef} onClose={() => setFromOpen(false)} returnFocus={() => fromButtonRef.current}
+                        style={{ ...menuPlace, left: `${gutter + 70}px`, top: '40px', width: '300px' }}>
                         {accounts.map(a => (
-                            <button
-                                key={a.id}
-                                type="button"
-                                role="menuitemradio"
-                                aria-checked={a.id === draft.fromAccountId}
-                                disabled={!a.hasSmtp}
-                                title={a.hasSmtp ? undefined : 'Sending isn’t set up for this account (Settings → Name and sending)'}
-                                onClick={() => {
+                            <MenuItem key={a.id} checked={a.id === draft.fromAccountId} disabled={!a.hasSmtp}
+                                title={a.hasSmtp ? undefined : 'Sending isn’t set up for this account. Add its sending server in Settings, under Password and servers'}
+                                onSelect={() => {
                                     setFromOpen(false);
                                     void changeFrom(a.id);
-                                }}
-                                style={{ ...menuItem(a.id === draft.fromAccountId), opacity: a.hasSmtp ? 1 : 0.45, cursor: a.hasSmtp ? 'pointer' : 'default' }}
-                            >
-                                <span style={{ width: '16px', color: 'var(--color-action)', display: 'flex' }}>
-                                    {a.id === draft.fromAccountId && <Check size={16} aria-hidden="true" />}
-                                </span>
-                                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {a.displayName && <>{a.displayName} </>}<span style={{ color: 'var(--color-text-muted)' }}>{a.email}</span>
-                                </span>
-                            </button>
+                                }}>
+                                {a.displayName && <>{a.displayName} </>}<span style={{ color: 'var(--text-3)' }}>{a.email}</span>
+                            </MenuItem>
                         ))}
-                    </div>
+                    </Menu>
                 )}
 
                 {typeOpen && (
-                    <div ref={typeMenuRef} role="menu" aria-label="Reply type" style={{ ...menu, left: '16px', top: '40px', width: '200px' }}
-                        onKeyDown={e => { if (e.key === 'Escape') setTypeOpen(false); }}>
+                    <Menu label="Reply type" anchor={typeButtonRef} onClose={() => setTypeOpen(false)} returnFocus={() => typeButtonRef.current}
+                        style={{ ...menuPlace, left: '16px', top: '40px', width: '200px' }}>
                         {TYPES.map(t => (
-                            <button
-                                key={t.type}
-                                type="button"
-                                role="menuitemradio"
-                                aria-checked={draft.type === t.type}
-                                onClick={() => {
+                            <MenuItem key={t.type} checked={draft.type === t.type} icon={<t.Icon size={16} aria-hidden="true" />}
+                                onSelect={() => {
                                     setTypeOpen(false);
                                     void changeType(t.type);
-                                }}
-                                style={menuItem(draft.type === t.type)}
-                            >
-                                <span style={{ width: '16px', color: 'var(--color-action)', display: 'flex' }}>
-                                    {draft.type === t.type && <Check size={16} aria-hidden="true" />}
-                                </span>
-                                <span style={{ display: 'flex', color: 'var(--color-text-muted)' }}><t.Icon size={16} aria-hidden="true" /></span>
-                                <span>{t.label}</span>
-                            </button>
+                                }}>
+                                {t.label}
+                            </MenuItem>
                         ))}
-                    </div>
+                    </Menu>
                 )}
             </div>
 
-            {/* The message: clicking anywhere here types into it */}
-            <div onClick={() => bodyRef.current?.focus()} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '20px 28px 16px', cursor: 'text' }}>
+            {/* The message: clicking anywhere here types into it. The box has 12px of room inside, so its
+                focus ring clears the text (owner, 2026-11-13); the text stays where it was, and the
+                signature sits just below the box, clear of the ring too. */}
+            <div onClick={() => bodyRef.current?.focus()} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 'var(--space-2) var(--space-4) var(--space-1)', cursor: 'text' }}>
                 <textarea
                     ref={bodyRef}
                     value={draft.body}
@@ -417,28 +347,28 @@ export const Composer: React.FC<{
                         display: 'block',
                         width: '100%',
                         boxSizing: 'border-box',
-                        border: 0,
-                        outline: 'none',
+                        border: 0, // edgeless; the focus ring is the page's (rule K3)
+                        borderRadius: 'var(--radius-2)',
                         resize: 'none',
                         overflow: 'hidden',
-                        padding: 0,
+                        padding: 'var(--space-3)',
                         background: 'transparent',
                         fontFamily: 'inherit',
-                        fontSize: 'var(--font-size-lg)',
+                        fontSize: 'var(--size-title)',
                         lineHeight: 1.65,
-                        color: 'var(--message-text)'
+                        color: 'var(--text-2)'
                     }}
                 />
                 {/* The From account's signature: added when saving and sending, changed in Settings */}
                 {from?.signature && (
-                    <p title="Your signature: change it in Settings" style={{ margin: '4px 0 0', whiteSpace: 'pre-line', fontSize: 'var(--font-size-base)', lineHeight: 1.6, color: 'var(--color-text-faint)', cursor: 'default' }}>
+                    <p title="Your signature: change it in Settings" style={{ margin: 'var(--space-1) 0 0', padding: '0 var(--space-3) var(--space-3)', whiteSpace: 'pre-line', fontSize: 'var(--size-large)', lineHeight: 1.6, color: 'var(--text-4)', cursor: 'default' }}>
                         {'—\n'}{from.signature}
                     </p>
                 )}
             </div>
 
             {draft.attachments.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '8px 16px', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-4)', borderTop: '1px solid var(--line-1)', flexShrink: 0 }}>
                     {draft.attachments.map(file => (
                         <span
                             key={file.key}
@@ -448,29 +378,31 @@ export const Composer: React.FC<{
                                 overflow: 'hidden',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '8px',
-                                padding: '4px 8px 4px 12px',
-                                border: file.error ? '1px solid var(--color-danger)' : '1px solid var(--color-border)',
-                                borderRadius: 'var(--radius-control)',
-                                background: file.error ? 'var(--error-bg)' : 'var(--color-bg-subtle)',
-                                fontSize: 'var(--font-size-sm)'
+                                gap: 'var(--space-2)',
+                                padding: 'var(--space-1) var(--space-2) var(--space-1) var(--space-3)',
+                                border: file.error ? '1px solid var(--danger)' : '1px solid var(--line-1)',
+                                borderRadius: 'var(--radius-2)',
+                                background: file.error ? 'var(--danger-tint)' : 'var(--surface-1)',
+                                fontSize: 'var(--size-body)'
                             }}
                         >
                             <FileIcon size={14} aria-hidden="true" />
-                            <span style={{ fontWeight: 'var(--weight-semibold)' }}>{file.filename}</span>
+                            <span style={{ fontWeight: 'var(--weight-medium)' }}>{file.filename}</span>
                             {file.error
-                                ? <span style={{ color: 'var(--error-text)', fontSize: 'var(--font-size-xs)' }}>{file.error}</span>
-                                : <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-xs)' }}>{formatSize(file.size)}</span>}
-                            <button type="button" aria-label={`Remove ${file.filename}`} onClick={() => removeAttachment(file.key)} className="em-icon-button"
-                                style={{ ...roundButton, width: '20px', height: '20px', padding: 0 }}>
-                                <X size={14} aria-hidden="true" />
-                            </button>
+                                ? <span style={{ color: 'var(--danger)', fontSize: 'var(--size-caption)' }}>{file.error}</span>
+                                : <span style={{ color: 'var(--text-3)', fontSize: 'var(--size-caption)' }}>{formatSize(file.size)}</span>}
+                            <Tooltip content={`Remove ${file.filename}`}>
+                                <button type="button" aria-label={`Remove ${file.filename}`} onClick={() => removeAttachment(file.key)} className="em-icon-button"
+                                    style={{ width: '20px', height: '20px', flexShrink: 0, padding: 0, border: 0, borderRadius: 'var(--radius-full)', background: 'transparent', color: 'var(--text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                    <X size={14} aria-hidden="true" />
+                                </button>
+                            </Tooltip>
                             {isUploading(file) && (
                                 // Upload progress; a forwarded file being copied has none to report.
                                 <span aria-hidden="true" className={file.progress === undefined ? 'skeleton-bone' : undefined} style={{
                                     position: 'absolute', left: 0, bottom: 0, height: '2px', width: '100%', transformOrigin: 'left',
                                     transform: `scaleX(${file.progress === undefined ? 1 : file.progress})`,
-                                    background: 'var(--color-action)', transition: 'transform var(--dur-mid) var(--ease)'
+                                    background: 'var(--action)', transition: 'transform var(--dur-base) var(--ease-in)'
                                 }} />
                             )}
                         </span>
@@ -478,85 +410,39 @@ export const Composer: React.FC<{
                 </div>
             )}
 
-            <footer style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
+            <footer style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-4)', borderTop: '1px solid var(--line-1)', flexShrink: 0 }}>
                 <input type="file" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={e => {
                     addFiles(Array.from(e.target.files ?? []));
                     e.target.value = ''; // the same file can be picked again
                 }} />
-                <button
-                    type="button"
-                    title="Attach file"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="em-pill-button"
-                    style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        height: '32px',
-                        padding: '0 12px',
-                        borderRadius: 'var(--radius-pill)',
-                        border: 'var(--attach-border)',
-                        background: 'var(--attach-bg)',
-                        color: 'var(--color-text-muted)',
-                        fontFamily: 'inherit',
-                        fontSize: 'var(--font-size-sm)',
-                        fontWeight: 'var(--weight-semibold)',
-                        cursor: 'pointer'
-                    }}
-                >
-                    <Paperclip size={16} aria-hidden="true" />Attach
-                </button>
-                <button type="button" title="Discard draft" aria-label="Discard draft" onClick={() => void discard()} className="em-icon-button" style={roundButton}>
-                    <Trash2 size={16} aria-hidden="true" />
-                </button>
-                {problemText ? (
-                    <span role="alert" style={{ marginLeft: '4px', fontSize: 'var(--font-size-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--color-danger)' }}>{problemText}</span>
-                ) : status === 'failed' && !uploading && !keptLocally ? (
-                    <span style={{ marginLeft: '4px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--font-size-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--color-danger)', whiteSpace: 'nowrap' }}>
-                        Not saved
-                        <button type="button" onClick={retrySave} style={{
-                            fontFamily: 'inherit',
-                            fontSize: 'var(--font-size-xs)',
-                            fontWeight: 'var(--weight-semibold)',
-                            color: 'var(--color-text-main)',
-                            background: 'var(--surface-raised)',
-                            border: '1px solid var(--border-strong)',
-                            borderRadius: 'var(--radius-pill)',
-                            padding: '2px 12px',
-                            cursor: 'pointer'
-                        }}>
-                            Try again
-                        </button>
-                    </span>
-                ) : (
-                    <span style={{ marginLeft: '4px', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>{statusText}</span>
-                )}
-                <button
+                <Button kind="quiet" icon={<Paperclip size={16} aria-hidden="true" />} onClick={() => fileInputRef.current?.click()}>Attach</Button>
+                <IconButton label="Discard draft" icon={<Trash2 size={16} aria-hidden="true" />} onClick={() => void discard()} />
+                {/* Beside Send, in faint text (board P3, change 1): "Saving… / Saved", or why it didn't go */}
+                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                    {problemText ? (
+                        <span role="alert" style={{ fontSize: 'var(--size-caption)', fontWeight: 'var(--weight-medium)', color: 'var(--danger)' }}>{problemText}</span>
+                    ) : status === 'failed' && !uploading && !keptLocally ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--size-caption)', fontWeight: 'var(--weight-medium)', color: 'var(--danger)', whiteSpace: 'nowrap' }}>
+                            Not saved
+                            <Button size="sm" onClick={retrySave}>Try again</Button>
+                        </span>
+                    ) : (
+                        <span aria-live="polite" style={{ fontSize: 'var(--size-caption)', color: 'var(--text-4)', whiteSpace: 'nowrap' }}>{statusText}</span>
+                    )}
+                </span>
+                <Button
                     ref={sendButtonRef}
-                    type="button"
+                    kind="primary"
+                    size="lg"
                     onClick={handleSend}
-                    disabled={sendOff}
-                    title={uploading ? 'Send waits for the upload' : waiting ? 'It sends when the server answers' : undefined}
-                    style={{
-                        marginLeft: 'auto',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        height: '40px',
-                        padding: '0 20px',
-                        border: 0,
-                        borderRadius: 'var(--radius-pill)',
-                        background: sendOff ? 'var(--send-disabled)' : 'var(--color-action)',
-                        boxShadow: sendOff ? 'none' : 'var(--shadow-send)',
-                        color: sendOff ? 'var(--send-disabled-text)' : 'var(--color-on-action)',
-                        fontFamily: 'inherit',
-                        fontWeight: 'var(--weight-semibold)',
-                        fontSize: 'var(--font-size-sm)',
-                        cursor: sendOff ? 'default' : 'pointer'
-                    }}
+                    disabled={uploading}
+                    // Rule A6: while it goes, or waits for the server, it says so and can't be pressed again
+                    working={sending ? 'Sending…' : waiting ? 'Waits for the server' : null}
+                    trailingIcon={sending || waiting ? undefined : <Send size={16} aria-hidden="true" />}
+                    style={{ marginLeft: 'var(--space-2)' }}
                 >
-                    {waiting ? 'Waits for the server' : <>Send<Send size={16} aria-hidden="true" /></>}
-                </button>
+                    Send
+                </Button>
             </footer>
         </section>
     );

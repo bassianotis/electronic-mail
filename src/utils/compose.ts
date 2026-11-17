@@ -6,13 +6,7 @@ import type { Email } from '../store/mailStore';
 import { sanitizeHtml } from './sanitize';
 import { inertDiv } from './inertHtml';
 
-export function replySubject(subject: string): string {
-    return /^re:/i.test(subject.trim()) ? subject : `Re: ${subject}`;
-}
-
-export function forwardSubject(subject: string): string {
-    return /^(fwd?|fw):/i.test(subject.trim()) ? subject : `Fwd: ${subject}`;
-}
+export { forwardSubject, replySubject } from './subjects'; // on their own, for the unit tests
 
 export function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));

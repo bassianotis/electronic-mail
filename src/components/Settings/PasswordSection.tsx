@@ -3,14 +3,19 @@
  * receiving and sending (a link opens a separate sending one); the servers in plain words, editable
  * behind "Change server details". Passwords and servers are checked with the server before
  * anything is saved ("Check and save"); one refusal saves nothing. A new password starts the
- * account again with it, so a refused account comes back online at once.
+ * account again with it, so a refused account comes back online at once. The fields stay editable
+ * while the server checks; a change meanwhile drops that check's answer (useServerCheck).
  */
 import React, { useEffect, useState } from 'react';
-import { Check, CloudOff, TriangleAlert } from 'lucide-react';
-import { api, acct, ApiError, errorText } from '../../api/client';
+import { Check, CloudOff } from 'lucide-react';
+import { api, acct, ApiError, reasonFor } from '../../api/client';
+import { tryAgain } from '../../api/engineWords';
 import type { Account, AccountSettings, ConnectionProblem, ServerSettings } from '../../api/types';
 import type { LiveStatus } from '../../api/events';
 import { useMail } from '../../context/MailContext';
+import { Button } from '../../ui/Button';
+import { Note } from '../../ui/Note';
+import { useServerCheck } from '../../ui/useServerCheck';
 import { FieldsSkeleton, LoadFailed, Problem, SecretInput, ServerRow, Spinner, type ServerDraft } from './parts';
 import { clockTime, sentence, sinceText, useSectionData } from './useSettings';
 
@@ -49,60 +54,52 @@ const StatusBox: React.FC<{ status: LiveStatus; accepted: boolean }> = ({ status
 
     if (accepted) {
         return (
-            <div className="st-box" role="status">
-                <span className="st-good"><Check size={16} aria-hidden="true" /></span>
-                <span>Password updated. Mail is arriving again</span>
-            </div>
+            <Note role="status" icon={<Check size={16} aria-hidden="true" className="is-good" />}>Password updated. Mail is arriving again</Note>
         );
     }
     if (status.state === 'auth-failed') {
         const at = clockTime(status.rejectedAt);
         const retry = clockTime(status.retryAt);
         return (
-            <div className="st-alert" role="alert">
-                <span className="st-icon-warn"><TriangleAlert size={16} aria-hidden="true" /></span>
-                <span>
-                    <b>The mail server rejected this account's password{at ? ` at ${at}` : ''}</b><br />
-                    <span className="st-secondary">
-                        New mail stops arriving until it's updated. If you changed it at your provider, enter the new one here.
-                        {retry ? ` Mail tries again on its own at ${retry}.` : ''}
-                    </span>
+            <Note tone="warning" role="alert">
+                <b>The mail server rejected this account's password{at ? ` at ${at}` : ''}</b><br />
+                <span className="ba-quiet">
+                    New mail stops arriving until it's updated. If you changed it at your provider, enter the new one here.
+                    {retry ? ` Mail tries again on its own at ${retry}.` : ''}
                 </span>
-            </div>
+            </Note>
         );
     }
     const since = sinceText(status.lastSyncAt, now);
     if (status.state === 'offline') {
         return (
-            <div className="st-box" role="status">
-                <span className="st-quiet"><CloudOff size={16} aria-hidden="true" /></span>
-                <span>Can't reach the mail server right now{since ? ` · mail checked ${since}` : ''}</span>
-            </div>
+            <Note role="status" icon={<CloudOff size={16} aria-hidden="true" />}>Can't reach the mail server right now{since ? ` · mail checked ${since}` : ''}</Note>
         );
     }
     if (status.state !== 'online') {
-        return <div className="st-box" role="status"><span className="st-quiet"><Spinner size={16} /></span><span>Connecting…</span></div>;
+        return <Note role="status" icon={<Spinner size={16} />}>Connecting…</Note>;
     }
     return (
-        <div className="st-box" role="status">
-            <span className="st-good"><Check size={16} aria-hidden="true" /></span>
-            <span>Connected{since ? ` · mail checked ${since}` : ''}</span>
-        </div>
+        <Note role="status" icon={<Check size={16} aria-hidden="true" className="is-good" />}>Connected{since ? ` · mail checked ${since}` : ''}</Note>
     );
 };
 
-/** The engine's reason without its "Incoming mail (IMAP): " label, as a sentence. */
-const reasonOf = (err: unknown) => sentence(errorText(err).replace(/^(Incoming|Outgoing) mail \((IMAP|SMTP)\): /, ''));
+/** The engine's reason in plain words (without its "Incoming mail (IMAP): " label), as a sentence,
+ *  and that nothing changed; with nothing worth saying, "Couldn't <action>. Try again." */
+const unchanged = (err: unknown, action: string) => { const why = reasonFor(err); return why ? `${sentence(why)}. Nothing was changed` : tryAgain(action); };
 const problemOf = (err: unknown): ConnectionProblem | null => (err instanceof ApiError ? (err.reason as ConnectionProblem | null) : null);
 const sameUser = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+/** A check that passed after the fields changed: the server kept what it checked (owner, 2026-11-14). */
+const SAVED_EARLIER = 'Saved the earlier details. Check and save to use these.';
 
 const PasswordFields: React.FC<{ accountId: string; settings: AccountSettings; onAccepted: () => void }> = ({ accountId, settings, onAccepted }) => {
     const [password, setPassword] = useState('');
     const [sendingPassword, setSendingPassword] = useState('');
     const [separate, setSeparate] = useState(false);
-    const [checking, setChecking] = useState(false);
+    const { checking, begin, current, end, changed } = useServerCheck();
     const [problem, setProblem] = useState<string | null>(null);
     const [sendingProblem, setSendingProblem] = useState<string | null>(null);
+    const [savedEarlier, setSavedEarlier] = useState(false);
     const typed = !!password || (separate && !!sendingPassword);
 
     const check = async () => {
@@ -114,58 +111,63 @@ const PasswordFields: React.FC<{ accountId: string; settings: AccountSettings; o
         if (password) body.imap = { ...settings.imap, pass: password };
         if (smtp && separate && sendingPassword) body.smtp = { ...smtp, pass: sendingPassword };
         else if (smtp && !separate && password && sameUser(smtp.user, settings.imap.user)) body.smtp = { ...smtp, pass: password };
-        setChecking(true);
+        const token = begin();
         setProblem(null);
         setSendingProblem(null);
+        setSavedEarlier(false);
         try {
             await api.patch(acct(accountId), body);
+            // Changed while it was checked: this answer is about a password no longer typed. It
+            // passed, so the server keeps it: say so quietly; the one typed now waits for its own
+            // Check and save
+            if (!current(token)) { setSavedEarlier(true); return; }
             setPassword('');
             setSendingPassword('');
             onAccepted();
         } catch (err) {
+            if (!current(token)) return;
             const why = problemOf(err);
             if (why === 'imap-refused') setProblem('The mail server rejected this password. Nothing was changed');
             else if (why === 'smtp-refused') {
                 const words = 'The sending server rejected this password. Nothing was changed';
                 if (separate && sendingPassword) setSendingProblem(words); else setProblem(words);
-            } else if (why === 'smtp' && separate && sendingPassword) setSendingProblem(`${reasonOf(err)}. Nothing was changed`);
-            else setProblem(`${reasonOf(err)}. Nothing was changed`);
+            } else if (why === 'smtp' && separate && sendingPassword) setSendingProblem(unchanged(err, 'save the password'));
+            else setProblem(unchanged(err, 'save the password'));
         } finally {
-            setChecking(false);
+            end(token);
         }
     };
 
     const onKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') void check(); };
     return (
         <div>
-            <label className="st-label" htmlFor="st-password">Password</label>
+            <label className="ba-label" htmlFor="st-password">Password</label>
             <div className="st-row">
-                <SecretInput id="st-password" value={password} disabled={checking} invalid={!!problem}
+                <SecretInput id="st-password" value={password} invalid={!!problem}
                     placeholder="Saved (enter a new one to change it)"
                     aria-describedby={['st-password-hint', problem ? 'st-password-problem' : ''].filter(Boolean).join(' ')}
-                    onChange={e => { setPassword(e.target.value); setProblem(null); }} onKeyDown={onKeyDown} />
-                <button type="button" className="st-primary" onClick={() => void check()} disabled={!typed || checking}>
-                    {checking && <Spinner />}{checking ? 'Checking with the server…' : 'Check and save'}
-                </button>
+                    onChange={e => { setPassword(e.target.value); setProblem(null); changed(); }} onKeyDown={onKeyDown} />
+                <Button kind="primary" onClick={() => void check()} disabled={!typed} working={checking && 'Checking with the server…'}>Check and save</Button>
             </div>
             {problem && <Problem id="st-password-problem">{problem}</Problem>}
-            <p className="st-hint" id="st-password-hint">
+            {savedEarlier && <p className="ba-hint" role="status">{SAVED_EARLIER}</p>}
+            <p className="ba-hint" id="st-password-hint">
                 Used for receiving and sending. Mail checks it with the server before saving. If your provider asks for an app password (Gmail, Outlook, iCloud), use that
             </p>
             {settings.smtp && (
-                <button type="button" className="st-text st-flush" style={{ marginTop: 6 }} disabled={checking}
+                <Button kind="quiet" size="sm" className="st-flush" style={{ marginTop: 6 }}
                     aria-expanded={separate} aria-controls="st-sending-password-field"
-                    onClick={() => { setSeparate(s => !s); setSendingPassword(''); setSendingProblem(null); }}>
+                    onClick={() => { setSeparate(s => !s); setSendingPassword(''); setSendingProblem(null); changed(); }}>
                     {separate ? 'Use one password for both' : 'Sending uses a different password'}
-                </button>
+                </Button>
             )}
             {separate && (
                 <div style={{ marginTop: 10 }} id="st-sending-password-field">
-                    <label className="st-label" htmlFor="st-sending-password">Sending password</label>
-                    <SecretInput id="st-sending-password" value={sendingPassword} disabled={checking} invalid={!!sendingProblem}
+                    <label className="ba-label" htmlFor="st-sending-password">Sending password</label>
+                    <SecretInput id="st-sending-password" value={sendingPassword} invalid={!!sendingProblem}
                         placeholder="Saved (enter a new one to change it)"
                         aria-describedby={sendingProblem ? 'st-sending-password-problem' : undefined}
-                        onChange={e => { setSendingPassword(e.target.value); setSendingProblem(null); }} onKeyDown={onKeyDown} />
+                        onChange={e => { setSendingPassword(e.target.value); setSendingProblem(null); changed(); }} onKeyDown={onKeyDown} />
                     {sendingProblem && <Problem id="st-sending-password-problem">{sendingProblem}</Problem>}
                 </div>
             )}
@@ -192,9 +194,10 @@ const Servers: React.FC<{ accountId: string; settings: AccountSettings; onSaved:
     const [outgoing, setOutgoing] = useState(() => draftOf(smtp));
     const [user, setUser] = useState(imap.user);
     const [sendingUser, setSendingUser] = useState(smtp?.user ?? imap.user);
-    const [checking, setChecking] = useState(false);
+    const { checking, begin, current, end, changed } = useServerCheck();
     const [problems, setProblems] = useState<{ imap?: string | null; smtp?: string | null }>({});
     const [saved, setSaved] = useState(false);
+    const [savedEarlier, setSavedEarlier] = useState(false);
 
     const toggle = () => {
         if (!open) {
@@ -204,6 +207,7 @@ const Servers: React.FC<{ accountId: string; settings: AccountSettings; onSaved:
             setSendingUser(smtp?.user ?? imap.user);
             setProblems({});
         }
+        changed(); // hidden while it was checked: its answer is dropped
         setOpen(o => !o);
     };
 
@@ -223,19 +227,24 @@ const Servers: React.FC<{ accountId: string; settings: AccountSettings; onSaved:
         if (JSON.stringify(nextImap) !== JSON.stringify({ host: imap.host, port: imap.port, secure: imap.secure, user: imap.user })) body.imap = nextImap;
         if (nextSmtp && JSON.stringify(nextSmtp) !== JSON.stringify(smtp && { host: smtp.host, port: smtp.port, secure: smtp.secure, user: smtp.user })) body.smtp = nextSmtp;
         if (!body.imap && !body.smtp) { setOpen(false); return; }
-        setChecking(true);
+        const token = begin();
+        setSavedEarlier(false);
         try {
             await api.patch(acct(accountId), body);
+            // Changed while it was checked: no "Saved", the form stays open with what's there now. It
+            // passed, so the server keeps what it checked (the summary above shows it), and says so
+            if (!current(token)) { setSavedEarlier(true); onSaved(); return; }
             setOpen(false);
             setSaved(true);
             window.setTimeout(() => setSaved(false), 2000);
             onSaved();
         } catch (err) {
+            if (!current(token)) return;
             const why = problemOf(err);
-            const words = why?.endsWith('refused') ? 'The server rejected the username or password. Nothing was changed' : `${reasonOf(err)}. Nothing was changed`;
+            const words = why?.endsWith('refused') ? 'The server rejected the username or password. Nothing was changed' : unchanged(err, 'save the server details');
             setProblems(why?.startsWith('smtp') ? { smtp: words } : { imap: words });
         } finally {
-            setChecking(false);
+            end(token);
         }
     };
 
@@ -251,33 +260,32 @@ const Servers: React.FC<{ accountId: string; settings: AccountSettings; onSaved:
                 <div className="st-kv"><span className="st-k">Username</span><span className="st-v">{imap.user}</span></div>
                 {!oneUser && smtp && <div className="st-kv"><span className="st-k">Sending username</span><span className="st-v">{smtp.user}</span></div>}
             </div>
-            <button type="button" className="st-text st-flush" style={{ marginTop: 8 }} onClick={toggle} aria-expanded={open} disabled={checking}>
+            <Button kind="quiet" size="sm" className="st-flush" style={{ marginTop: 'var(--space-2)' }} onClick={toggle} aria-expanded={open}>
                 {open ? 'Hide server details' : 'Change server details'}
-            </button>
+            </Button>
             {open && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12 }}>
-                    <ServerRow kind="imap" id="st-imap" value={incoming} onChange={v => { setIncoming(v); setProblems(p => ({ ...p, imap: null })); }} disabled={checking} problem={problems.imap} />
-                    <ServerRow kind="smtp" id="st-smtp" value={outgoing} onChange={v => { setOutgoing(v); setProblems(p => ({ ...p, smtp: null })); }} disabled={checking} problem={problems.smtp} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 'var(--space-3)' }}>
+                    <ServerRow kind="imap" id="st-imap" value={incoming} onChange={v => { setIncoming(v); setProblems(p => ({ ...p, imap: null })); changed(); }} problem={problems.imap} />
+                    <ServerRow kind="smtp" id="st-smtp" value={outgoing} onChange={v => { setOutgoing(v); setProblems(p => ({ ...p, smtp: null })); changed(); }} problem={problems.smtp} />
                     <div className="st-row" style={{ alignItems: 'flex-start' }}>
                         <div style={{ flex: '1 1 260px', maxWidth: 360 }}>
-                            <label className="st-label" htmlFor="st-user">{oneUser ? 'Username' : 'Receiving username'}</label>
-                            <input id="st-user" className="st-input" value={user} disabled={checking} spellCheck={false} autoComplete="off" onChange={e => setUser(e.target.value)} />
+                            <label className="ba-label" htmlFor="st-user">{oneUser ? 'Username' : 'Receiving username'}</label>
+                            <input id="st-user" className="ba-input" value={user} spellCheck={false} autoComplete="off" onChange={e => { setUser(e.target.value); changed(); }} />
                         </div>
                         {!oneUser && (
                             <div style={{ flex: '1 1 260px', maxWidth: 360 }}>
-                                <label className="st-label" htmlFor="st-sending-user">Sending username</label>
-                                <input id="st-sending-user" className="st-input" value={sendingUser} disabled={checking} spellCheck={false} autoComplete="off" onChange={e => setSendingUser(e.target.value)} />
+                                <label className="ba-label" htmlFor="st-sending-user">Sending username</label>
+                                <input id="st-sending-user" className="ba-input" value={sendingUser} spellCheck={false} autoComplete="off" onChange={e => { setSendingUser(e.target.value); changed(); }} />
                             </div>
                         )}
                     </div>
                     <div className="st-row">
-                        <button type="button" className="st-primary" onClick={() => void save()} disabled={checking}>
-                            {checking && <Spinner />}{checking ? 'Checking with the server…' : 'Check and save'}
-                        </button>
-                        <span className="st-hint" style={{ margin: 0 }}>Changing the security option sets the usual port; both servers are checked before anything is saved</span>
+                        <Button kind="primary" onClick={() => void save()} working={checking && 'Checking with the server…'}>Check and save</Button>
+                        <span className="ba-hint" style={{ margin: 0 }}>Changing the security option sets the usual port; both servers are checked before anything is saved</span>
                     </div>
                 </div>
             )}
+            {savedEarlier && <p className="ba-hint" role="status" style={{ marginTop: 'var(--space-2)' }}>{SAVED_EARLIER}</p>}
         </div>
     );
 };

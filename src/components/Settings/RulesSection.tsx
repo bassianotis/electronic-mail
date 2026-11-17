@@ -5,12 +5,13 @@
  */
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, Pencil, Trash2 } from 'lucide-react';
-import { api, acct, errorText } from '../../api/client';
+import { api, acct, couldnt, reasonOr } from '../../api/client';
 import type { Account, BucketView, RuleView } from '../../api/types';
 import { useMail } from '../../context/MailContext';
 import { BucketGlyph } from '../Buckets/BucketGlyph';
+import { Button, IconButton } from '../../ui/Button';
 import { FieldsSkeleton, LoadFailed, Problem } from './parts';
-import { sentence, useSectionData } from './useSettings';
+import { useSectionData } from './useSettings';
 
 interface RulesData { rules: RuleView[]; buckets: BucketView[] }
 
@@ -35,7 +36,7 @@ export const RulesSection: React.FC<{ account: Account }> = ({ account }) => {
         try {
             await api.del(`${acct(account.id)}/rules/${encodeURIComponent(rule.id)}`);
         } catch (err) {
-            showToast({ message: `Couldn't delete the rule: ${errorText(err)}`, tone: 'error' });
+            showToast({ message: couldnt('delete the rule', err), tone: 'error' });
             void refresh();
             return;
         }
@@ -46,7 +47,7 @@ export const RulesSection: React.FC<{ account: Account }> = ({ account }) => {
                 onClick: () => {
                     api.post(`${acct(account.id)}/rules`, { senderPattern: rule.senderPattern, bucket: rule.bucket, createdAt: rule.createdAt })
                         .then(() => refreshRef.current())
-                        .catch(err => showToast({ message: `Couldn't put the rule back: ${errorText(err)}`, tone: 'error' }));
+                        .catch(err => showToast({ message: couldnt('put the rule back', err), tone: 'error' }));
                 },
             }],
         });
@@ -87,7 +88,7 @@ const AddRule: React.FC<{ accountId: string; buckets: BucketView[]; onAdded: () 
             setProblem(null);
             onAdded();
         } catch (err) {
-            setProblem(sentence(errorText(err))); // what you typed stays
+            setProblem(reasonOr('add the rule', err)); // what you typed stays
         } finally {
             setAdding(false);
         }
@@ -97,24 +98,24 @@ const AddRule: React.FC<{ accountId: string; buckets: BucketView[]; onAdded: () 
         <div>
             <div className="st-add-rule">
                 <div>
-                    <label className="st-label" htmlFor="st-rule-from">From</label>
-                    <input id="st-rule-from" className="st-input" value={from} spellCheck={false} autoComplete="off"
+                    <label className="ba-label" htmlFor="st-rule-from">From</label>
+                    <input id="st-rule-from" className="ba-input" value={from} spellCheck={false} autoComplete="off"
                         placeholder="news@example.com, or @example.com for everyone there"
                         aria-invalid={problem ? true : undefined} aria-describedby={problem ? 'st-rule-problem' : undefined}
                         onChange={e => { setFrom(e.target.value); setProblem(null); }}
                         onKeyDown={e => { if (e.key === 'Enter') void add(); }} />
                 </div>
                 <div>
-                    <span className="st-label" id="st-rule-bucket-label">Bucket</span>
+                    <span className="ba-label" id="st-rule-bucket-label">Bucket</span>
                     <BucketPicker buckets={buckets} value={chosen} onChange={setBucket} labelledBy="st-rule-bucket-label" />
                 </div>
                 <div>
-                    <span className="st-label" aria-hidden="true">&nbsp;</span>
-                    <button type="button" className="st-primary" onClick={() => void add()} disabled={adding || !chosen} style={{ height: 40 }}>Add rule</button>
+                    <span className="ba-label" aria-hidden="true">&nbsp;</span>
+                    <Button kind="primary" size="lg" onClick={() => void add()} disabled={!chosen} working={adding && 'Adding…'}>Add rule</Button>
                 </div>
             </div>
             {problem && <Problem id="st-rule-problem">{problem}</Problem>}
-            {!buckets.length && <p className="st-hint">Rules file mail into buckets, and this account has none yet</p>}
+            {!buckets.length && <p className="ba-hint">Rules file mail into buckets, and this account has none yet</p>}
         </div>
     );
 };
@@ -148,7 +149,7 @@ const RuleRow: React.FC<{
             onSaved(next);
             setEditing(false);
         } catch (err) {
-            setProblem(sentence(errorText(err)));
+            setProblem(reasonOr('save the rule', err));
         } finally {
             setSaving(false);
         }
@@ -160,19 +161,19 @@ const RuleRow: React.FC<{
                 onKeyDown={e => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); setEditing(false); } }}>
                 <div className="st-add-rule">
                     <div>
-                        <label className="st-label" htmlFor={`${id}-from`}>From</label>
-                        <input id={`${id}-from`} className="st-input" value={from} spellCheck={false} autoComplete="off" autoFocus
+                        <label className="ba-label" htmlFor={`${id}-from`}>From</label>
+                        <input id={`${id}-from`} className="ba-input" value={from} spellCheck={false} autoComplete="off" autoFocus
                             aria-invalid={problem ? true : undefined} aria-describedby={problem ? `${id}-problem` : undefined}
                             onChange={e => { setFrom(e.target.value); setProblem(null); }}
                             onKeyDown={e => { if (e.key === 'Enter') void save(); }} />
                     </div>
                     <div>
-                        <span className="st-label" id={`${id}-bucket`}>Bucket</span>
+                        <span className="ba-label" id={`${id}-bucket`}>Bucket</span>
                         <BucketPicker buckets={buckets} value={bucket} onChange={setBucket} labelledBy={`${id}-bucket`} />
                     </div>
                     <div className="st-row" style={{ alignSelf: 'end', flexWrap: 'nowrap' }}>
-                        <button type="button" className="st-btn" style={{ height: 40 }} onClick={() => setEditing(false)}>Cancel</button>
-                        <button type="button" className="st-primary" style={{ height: 40 }} onClick={() => void save()} disabled={saving}>Save</button>
+                        <Button size="lg" onClick={() => setEditing(false)}>Cancel</Button>
+                        <Button kind="primary" size="lg" onClick={() => void save()} working={saving && 'Saving…'}>Save</Button>
                     </div>
                 </div>
                 {problem && <Problem id={`${id}-problem`}>{problem}</Problem>}
@@ -186,17 +187,13 @@ const RuleRow: React.FC<{
                 <span aria-hidden="true">→</span>
                 {target ? (
                     <>
-                        <BucketGlyph stored={target.emoji} label={target.name} size={15} fallbackStyle={{ fontSize: 12, width: 15, textAlign: 'center' }} />
+                        <BucketGlyph stored={target.emoji} label={target.name} size={15} fallbackStyle={{ fontSize: 'var(--size-caption)', width: 15, textAlign: 'center' }} />
                         <span>{target.name}</span>
                     </>
-                ) : <span style={{ color: 'var(--color-text-faint)' }}>a deleted bucket</span>}
+                ) : <span style={{ color: 'var(--text-4)' }}>a deleted bucket</span>}
             </span>
-            <button type="button" className="st-icon" aria-label={`Edit rule for ${rule.senderPattern}`} title="Edit" onClick={start}>
-                <Pencil size={15} aria-hidden="true" />
-            </button>
-            <button type="button" className="st-icon" aria-label={`Delete rule for ${rule.senderPattern}`} title="Delete" onClick={onDelete}>
-                <Trash2 size={15} aria-hidden="true" />
-            </button>
+            <IconButton size={28} label="Edit" aria-label={`Edit rule for ${rule.senderPattern}`} onClick={start} icon={<Pencil size={15} aria-hidden="true" />} />
+            <IconButton size={28} label="Delete" aria-label={`Delete rule for ${rule.senderPattern}`} onClick={onDelete} icon={<Trash2 size={15} aria-hidden="true" />} />
         </div>
     );
 };
@@ -246,20 +243,20 @@ const BucketPicker: React.FC<{ buckets: BucketView[]; value: string; onChange: (
 
     return (
         <div className="st-picker" ref={box}>
-            <button ref={button} type="button" className="st-input" disabled={!buckets.length}
+            <button ref={button} type="button" className="ba-input" disabled={!buckets.length}
                 aria-haspopup="listbox" aria-expanded={open} aria-labelledby={labelledBy} aria-controls={open ? listId : undefined}
                 aria-activedescendant={open ? `${listId}-${active}` : undefined}
                 onClick={() => (open ? setOpen(false) : show())} onKeyDown={onKeyDown}>
-                {current && <BucketGlyph stored={current.emoji} label={current.name} size={15} fallbackStyle={{ fontSize: 12, width: 15, textAlign: 'center' }} />}
+                {current && <BucketGlyph stored={current.emoji} label={current.name} size={15} fallbackStyle={{ fontSize: 'var(--size-caption)', width: 15, textAlign: 'center' }} />}
                 <span>{current?.name ?? 'No buckets'}</span>
-                <ChevronDown size={14} aria-hidden="true" style={{ color: 'var(--color-text-faint)', flexShrink: 0 }} />
+                <ChevronDown size={14} aria-hidden="true" style={{ color: 'var(--text-4)', flexShrink: 0 }} />
             </button>
             {open && (
                 <ul className="st-options" role="listbox" id={listId} aria-labelledby={labelledBy}>
                     {buckets.map((b, i) => (
                         <li key={b.name} id={`${listId}-${i}`} role="option" aria-selected={b.name === value} data-active={i === active}
                             onPointerEnter={() => setActive(i)} onClick={() => pick(i)}>
-                            <BucketGlyph stored={b.emoji} label={b.name} size={15} fallbackStyle={{ fontSize: 12, width: 15, textAlign: 'center' }} />
+                            <BucketGlyph stored={b.emoji} label={b.name} size={15} fallbackStyle={{ fontSize: 'var(--size-caption)', width: 15, textAlign: 'center' }} />
                             {b.name}
                         </li>
                     ))}

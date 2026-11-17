@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Search, Settings, PenSquare, ChevronRight } from 'lucide-react';
+import { Button, IconButton } from '../../ui/Button';
 import { useDragDrop } from '../../context/DragDropContext';
 import { useMail } from '../../context/MailContext';
 import { useConnection, useStatuses } from '../../api/events';
@@ -36,30 +37,30 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
             display: 'grid',
             gridTemplateColumns: '1fr minmax(auto, 480px) 1fr',
             alignItems: 'center',
-            padding: '0 var(--space-lg)',
+            padding: '0 var(--space-6)',
             borderBottom: '1px solid transparent',
         }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', justifySelf: 'start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', justifySelf: 'start' }}>
                 {/* Logo / Brand - Home Link */}
                 <button
                     id="inbox-target"
                     onClick={() => onNavigate('inbox')}
                     style={{
-                        fontWeight: 'var(--weight-bold)',
-                        fontSize: 'var(--size-app-name)',
+                        fontWeight: 'var(--weight-medium)',
+                        fontSize: 'var(--size-wordmark)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 'var(--space-sm)',
+                        gap: 'var(--space-2)',
                         background: 'none',
                         border: 'none',
                         cursor: 'pointer',
-                        padding: '8px 12px',
-                        borderRadius: 'var(--radius-md)',
+                        padding: 'var(--space-2) var(--space-3)',
+                        borderRadius: 'var(--radius-3)',
                         // As a drop target: the dock rows' fill and amber ring
-                        backgroundColor: isHovered ? 'var(--color-bg-hover)' : 'transparent',
-                        color: 'var(--color-text-main)',
-                        boxShadow: isHovered ? 'inset 0 0 0 1px var(--color-action)' : 'none',
-                        transition: 'background-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
+                        backgroundColor: isHovered ? 'var(--fill-hover)' : 'transparent',
+                        color: 'var(--text-1)',
+                        boxShadow: isHovered ? 'inset 0 0 0 1px var(--action)' : 'none',
+                        transition: 'background-color var(--dur-instant) var(--ease-in), box-shadow var(--dur-instant) var(--ease-in)',
                         width: 'fit-content'
                     }}
                 >
@@ -77,12 +78,12 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                 {connectionNote && (
                     <span
                         style={{
-                            fontSize: 'var(--font-size-xs)',
-                            color: 'var(--note-warn-text)',
-                            backgroundColor: 'var(--note-warn-bg)',
-                            border: '1px solid var(--note-warn-border)',
+                            fontSize: 'var(--size-caption)',
+                            color: 'var(--action)',
+                            backgroundColor: 'var(--action-tint)',
+                            border: '1px solid color-mix(in srgb, var(--action) 30%, transparent)',
                             borderRadius: 'var(--radius-full)',
-                            padding: '2px 12px',
+                            padding: '2px var(--space-3)',
                             whiteSpace: 'nowrap'
                         }}
                     >
@@ -91,95 +92,67 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                 )}
             </div>
 
-            {/* Search Bar */}
-            <div
+            {/* Search: a button that looks like a field (rule K1) */}
+            <button
+                type="button"
                 onClick={onSearchClick}
                 style={{
+                    display: 'block',
                     width: '100%',
                     position: 'relative',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    padding: 0,
+                    border: 0,
+                    background: 'none',
+                    color: 'inherit',
+                    textAlign: 'left',
+                    lineHeight: 'inherit',
+                    borderRadius: 'var(--radius-2)'
                 }}
             >
-                <div style={{
+                <span style={{
                     position: 'absolute',
-                    left: 'var(--space-md)',
+                    left: 'var(--space-4)',
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    color: 'var(--color-text-muted)',
+                    color: 'var(--text-3)',
                     display: 'flex'
                 }}>
-                    <Search size={16} />
-                </div>
-                <div
+                    <Search size={16} aria-hidden="true" />
+                </span>
+                <span
                     style={{
+                        display: 'block',
                         width: '100%',
-                        padding: '8px 12px 8px 44px',
-                        borderRadius: 'var(--radius-pill)',
-                        border: '1px solid var(--color-border)',
-                        backgroundColor: 'var(--color-bg-subtle)',
-                        fontSize: 'var(--font-size-sm)',
-                        color: 'var(--color-text-muted)',
-                        transition: 'background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)'
+                        padding: 'var(--space-2) var(--space-3) var(--space-2) 44px',
+                        borderRadius: 'var(--radius-2)',
+                        border: '1px solid var(--line-1)',
+                        backgroundColor: 'var(--surface-1)',
+                        fontSize: 'var(--size-body)',
+                        color: 'var(--text-3)',
+                        transition: 'background-color var(--dur-instant) var(--ease-in), border-color var(--dur-instant) var(--ease-in)'
                     }}
                 >
                     Search
-                </div>
-            </div>
+                </span>
+            </button>
 
             {/* Right Section: Compose + Settings */}
             <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-sm)',
+                gap: 'var(--space-2)',
                 justifySelf: 'end'
             }}>
-                {/* Compose Button */}
+                {/* Compose: the shared secondary Button with its amber icon (the frame's primary action) */}
                 {onComposeClick && (
-                    <button
-                        onClick={onComposeClick}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px 16px',
-                            borderRadius: 'var(--radius-pill)',
-                            backgroundColor: 'var(--compose-bg)',
-                            border: 'var(--compose-border)',
-                            color: 'var(--compose-text)',
-                            fontSize: 'var(--font-size-sm)',
-                            fontWeight: 'var(--weight-semibold)',
-                            cursor: 'pointer',
-                            transition: 'background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)'
-                        }}
-                        // A colour change on hover, no lift
-                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--compose-hover)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--compose-bg)'; }}
-                    >
-                        <PenSquare size={16} style={{ color: 'var(--compose-icon)' }} />
+                    <Button icon={<PenSquare size={16} aria-hidden="true" style={{ color: 'var(--action)' }} />} onClick={onComposeClick}>
                         Compose
-                    </button>
+                    </Button>
                 )}
 
-                {/* Settings Button */}
-                <button
-                    aria-label="Settings"
-                    onClick={() => openSettings({ section: lastSection(), accountId: activeAccountId })}
-                    style={{
-                        padding: 'var(--space-sm)',
-                        color: 'var(--color-text-muted)',
-                        borderRadius: 'var(--radius-full)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-subtle)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                >
-                    <Settings size={16} />
-                </button>
+                <IconButton label="Settings" icon={<Settings size={16} aria-hidden="true" />}
+                    onClick={() => openSettings({ section: lastSection(), accountId: activeAccountId })} />
             </div>
 
             <AnimatePresence>

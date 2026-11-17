@@ -32,6 +32,9 @@ import { FLOATING_WIDTH } from '../../utils/layout';
 import type { ReplyType } from '../../utils/replyDraft';
 import { Reply, ReplyAll, Forward, RotateCcw, Archive, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DURATION, tween } from '../../utils/motion';
+import { useEscape, Z } from '../../utils/layers';
+import { Tooltip } from '../../ui/Tooltip';
+import { Button } from '../../ui/Button';
 
 interface LibraryCardViewProps {
     /** The conversation's card (or any message of it). */
@@ -49,22 +52,6 @@ interface LibraryCardViewProps {
 
 
 /** A button in the glass bar under the cards: icon and label (1g). */
-const barButton: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '8px',
-    height: '32px',
-    padding: '0 12px',
-    borderRadius: 'max(4px, calc(var(--radius-pill) - 4px))',
-    border: '1px solid transparent',
-    background: 'transparent',
-    color: 'var(--color-text-main)',
-    fontFamily: 'inherit',
-    fontSize: 'var(--font-size-sm)',
-    fontWeight: 'var(--weight-semibold)',
-    cursor: 'pointer'
-};
-
 const bareId = (id: string | null | undefined) => (id ?? '').replace(/^<|>$/g, '');
 
 // The band above the composer: 200px to start, 160px to about 70% of the height, kept for the session.
@@ -80,7 +67,22 @@ const readTree = () => {
     try { return localStorage.getItem(TREE_KEY) === 'open'; } catch { return false; }
 };
 
+// Rule K7 here: moving on to another thread (Archive and Restore move on; ← / →, the pill) replaces
+// this view, so the focus would fall to the page. The new one puts it on the same control (Archive
+// again, say), else on the thread itself.
+let focusedControl: string | null = null;
+// A control's key: its name (the bar's text buttons are named by their words)
+const controlKey = (el: Element) => (el.getAttribute('title') || el.getAttribute('aria-label') || (el.tagName === 'BUTTON' ? el.textContent?.trim() : '') || '').split(':')[0];
+
 export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose, openDraft, list: listKey, onOpen, switched }) => {
+    const layerRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const active = document.activeElement;
+        if (!switched || (active && active !== document.body)) return;
+        const root = layerRef.current;
+        const same = focusedControl ? Array.from(root?.querySelectorAll<HTMLButtonElement>('button') ?? []).find(b => !b.disabled && controlKey(b) === focusedControl) : null;
+        (same ?? root?.closest<HTMLElement>('[data-layer="view"]'))?.focus({ preventScroll: true });
+    }, [switched]);
     const { activeAccountId, activeAccount, accounts, folders, drafts, markThreadSeen, moveThread, undoMove, showToast, download } = useMail();
     const accountId = activeAccountId ?? '';
     const threadId = email.threadId;
@@ -213,10 +215,6 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
     // with a list. Esc closes.
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                closeAll();
-                return;
-            }
             const target = e.target as HTMLElement;
             const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
             if (isTyping || isComposing || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
@@ -236,7 +234,10 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [threadEmails.length, setSelectedIndex, closeAll, isComposing, prevCard, nextCard, onOpen, listKey]);
+    }, [threadEmails.length, setSelectedIndex, isComposing, prevCard, nextCard, onOpen, listKey]);
+    // Esc (rule L4): the reply docked here closes first, keeping its draft; then the thread
+    useEscape(true, 'view', closeAll);
+    useEscape(isComposing, 'view', () => void closeDraft(), { step: 1 });
 
     /**
      * Reply, Reply all or Forward on the message on top of the stack. With this conversation's own
@@ -414,16 +415,17 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
 
     if (gone) {
         return (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--overlay-scrim)', backdropFilter: 'blur(var(--blur-overlay))' }} onClick={onClose}>
-                <div style={{ backgroundColor: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-xl)', boxShadow: 'var(--shadow-lg)' }}>
-                    This conversation is no longer in your mailbox.
+            <div style={{ position: 'fixed', inset: 0, zIndex: Z.view.thread, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--scrim)' }} onClick={onClose}>
+                <div style={{ backgroundColor: 'var(--surface-raised)', border: '1px solid var(--line-2)', borderRadius: 'var(--radius-3)', padding: 'var(--space-8)', boxShadow: 'none' }}>
+                    This thread is no longer in your mailbox.
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="reading-layer" style={{ position: 'fixed', inset: 0, top: 'var(--server-banner)', zIndex: 200 }}>
+        <div ref={layerRef} className="reading-layer" onFocus={e => { focusedControl = controlKey(e.target); }}
+            style={{ position: 'fixed', inset: 0, top: 'var(--server-banner)', zIndex: Z.view.thread }}>
             {/* Backdrop: clicking outside the cards closes the conversation */}
             <motion.div
                 initial={switched ? false : { opacity: 0 }}
@@ -432,16 +434,15 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
                 style={{
                     position: 'absolute',
                     inset: 0,
-                    backgroundColor: 'var(--overlay-scrim)',
-                    backdropFilter: 'blur(var(--blur-overlay))'
+                    backgroundColor: 'var(--scrim)'
                 }}
             />
 
-            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', justifyContent: 'center', padding: '16px 24px 20px' }}>
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', justifyContent: 'center', padding: 'var(--space-4) var(--space-6) var(--space-5)' }}>
                 <div ref={columnRef} style={{ width: FLOATING_WIDTH, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
                     {/* The card (or the band and the composer), and the thread tree to its right; the
                         reading layer keeps its width, so the card narrows while the tree is open */}
-                    <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: '12px' }}>
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 'var(--space-3)' }}>
                         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                             {/* The cards (a band above the composer while replying); room above for the edges */}
                             <motion.div
@@ -489,7 +490,7 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
                                             }}
                                             style={{ pointerEvents: 'auto', width: '64px', height: '16px', border: 0, padding: 0, background: 'transparent', cursor: 'row-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none' }}
                                         >
-                                            <span aria-hidden="true" style={{ display: 'block', width: '40px', height: '4px', borderRadius: 'var(--radius-full)', background: 'var(--drag-handle)', boxShadow: 'var(--drag-handle-shadow)' }} />
+                                            <span aria-hidden="true" style={{ display: 'block', width: '40px', height: '4px', borderRadius: 'var(--radius-full)', background: 'var(--line-3)', boxShadow: 'none' }} />
                                         </button>
                                     </div>
                                     <motion.div
@@ -500,9 +501,9 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
                                             flex: 1,
                                             minHeight: 0,
                                             pointerEvents: 'auto',
-                                            borderRadius: 'var(--radius-lg)',
-                                            boxShadow: 'var(--shadow-panel)',
-                                            border: '1px solid var(--border-strong)',
+                                            borderRadius: 'var(--radius-3)',
+                                            boxShadow: 'var(--shadow-overlay)',
+                                            border: '1px solid var(--line-2)',
                                             overflow: 'hidden'
                                         }}
                                     >
@@ -530,74 +531,74 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
                     {/* Under it: the bar, centred, and previous / next at the right. Not while replying:
                         the composer has the room (owner, 2026-11-10). */}
                     {!isComposing && (
-                    <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', marginTop: '12px', minHeight: convList && place >= 0 ? '42px' : undefined, flexShrink: 0 }}>
+                    <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', marginTop: 'var(--space-3)', minHeight: convList && place >= 0 ? '42px' : undefined, flexShrink: 0 }}>
                         {/* Reply, Reply all, Forward | Archive; Restore when archived */}
                         <div style={{
                                 pointerEvents: 'auto',
                                 display: 'flex',
                                 gap: '2px',
-                                padding: '4px',
-                                borderRadius: 'var(--radius-pill)',
-                                background: 'var(--bar-bg)',
-                                border: '1px solid var(--glass-border)',
-                                boxShadow: 'var(--shadow-sm)',
-                                backdropFilter: 'blur(var(--blur-control))',
-                                WebkitBackdropFilter: 'blur(var(--blur-control))'
+                                padding: 'var(--space-1)',
+                                borderRadius: 'var(--radius-2)',
+                                background: 'var(--surface-raised)',
+                                border: '1px solid var(--line-2)',
+                                boxShadow: 'none',
                             }}>
                                 {archiveMode && !isSentOnlyThread ? (
-                                    <button type="button" className="em-pill-button" onClick={() => void handleRestore()} title="Restore" style={barButton}>
-                                        <RotateCcw size={16} aria-hidden="true" />Restore
-                                    </button>
+                                    <Button kind="quiet" className="em-bar-button" icon={<RotateCcw size={16} aria-hidden="true" />} onClick={() => void handleRestore()}>
+                                        Restore
+                                    </Button>
                                 ) : (
                                     <>
-                                        <button type="button" className="em-pill-button needs-server" disabled={offline} onClick={() => startCompose('reply')} title="Reply" style={barButton}>
-                                            <Reply size={16} aria-hidden="true" />Reply
-                                        </button>
-                                        <button type="button" className="em-pill-button needs-server" disabled={offline} onClick={() => startCompose('replyAll')} title="Reply all" style={barButton}>
-                                            <ReplyAll size={16} aria-hidden="true" />Reply all
-                                        </button>
-                                        <button type="button" className="em-pill-button needs-server" disabled={offline} onClick={() => startCompose('forward')} title="Forward" style={barButton}>
-                                            <Forward size={16} aria-hidden="true" />Forward
-                                        </button>
+                                        <Button kind="quiet" className="em-bar-button needs-server" disabled={offline} icon={<Reply size={16} aria-hidden="true" />} onClick={() => startCompose('reply')}>
+                                            Reply
+                                        </Button>
+                                        <Button kind="quiet" className="em-bar-button needs-server" disabled={offline} icon={<ReplyAll size={16} aria-hidden="true" />} onClick={() => startCompose('replyAll')}>
+                                            Reply all
+                                        </Button>
+                                        <Button kind="quiet" className="em-bar-button needs-server" disabled={offline} icon={<Forward size={16} aria-hidden="true" />} onClick={() => startCompose('forward')}>
+                                            Forward
+                                        </Button>
                                         {/* In the Inbox or a bucket (a sent-only conversation can't be archived) */}
                                         {!archiveMode && (
                                             <>
-                                                <span aria-hidden="true" style={{ width: '1px', margin: '4px 4px', background: 'var(--border-strong)' }} />
-                                                <button type="button" className="em-pill-button needs-server" disabled={offline} onClick={() => void handleArchive()} title="Archive" style={barButton}>
-                                                    <Archive size={16} aria-hidden="true" />Archive
-                                                </button>
+                                                <span aria-hidden="true" style={{ width: '1px', margin: 'var(--space-1) var(--space-1)', background: 'var(--line-2)' }} />
+                                                <Button kind="quiet" className="em-bar-button needs-server" disabled={offline} icon={<Archive size={16} aria-hidden="true" />} onClick={() => void handleArchive()}>
+                                                    Archive
+                                                </Button>
                                             </>
                                         )}
                                     </>
                                 )}
                             </div>
 
-                        {/* Previous / next conversation, with the subject on hover */}
+                        {/* Previous / next thread, with the subject on hover ("thread": board P2, change 3) */}
                         {convList && place >= 0 && (
                             <div className="em-conv-pill" style={{ position: 'absolute', right: 0, top: 0, pointerEvents: 'auto' }}>
-                                <button
-                                    type="button"
-                                    disabled={!prevCard}
-                                    aria-label={prevCard ? `Previous conversation: ${prevCard.subject}` : 'Previous conversation'}
-                                    onClick={() => { if (prevCard) onOpen(prevCard, listKey); }}
-                                >
-                                    <ChevronLeft size={16} strokeWidth={1.5} aria-hidden="true" />
-                                    {prevCard && <span className="em-tip" style={{ right: '-40px' }}><i>Previous</i>{prevCard.subject}</span>}
-                                </button>
+                                <Tooltip placement="above" content={prevCard ? <><span className="ba-tooltip__lead">Previous</span>{prevCard.subject}</> : 'Previous thread'}>
+                                    <button
+                                        type="button"
+                                        disabled={!prevCard}
+                                        aria-label={prevCard ? `Previous thread: ${prevCard.subject}` : 'Previous thread'}
+                                        onClick={() => { if (prevCard) onOpen(prevCard, listKey); }}
+                                    >
+                                        <ChevronLeft size={16} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
                                 {at >= 0 && (
-                                    <span style={{ padding: '0 4px', fontSize: '13px', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                                    <span style={{ padding: '0 var(--space-1)', fontSize: 'var(--size-small)', color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                         {at + 1} of {convList.total}
                                     </span>
                                 )}
-                                <button
-                                    type="button"
-                                    disabled={!nextCard}
-                                    aria-label={nextCard ? `Next conversation: ${nextCard.subject}` : 'Next conversation'}
-                                    onClick={() => { if (nextCard) onOpen(nextCard, listKey); }}
-                                >
-                                    <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />
-                                    {nextCard && <span className="em-tip" style={{ right: 0 }}><i>Next</i>{nextCard.subject}</span>}
-                                </button>
+                                <Tooltip placement="above" content={nextCard ? <><span className="ba-tooltip__lead">Next</span>{nextCard.subject}</> : 'Next thread'}>
+                                    <button
+                                        type="button"
+                                        disabled={!nextCard}
+                                        aria-label={nextCard ? `Next thread: ${nextCard.subject}` : 'Next thread'}
+                                        onClick={() => { if (nextCard) onOpen(nextCard, listKey); }}
+                                    >
+                                        <ChevronRight size={16} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
                             </div>
                         )}
                     </div>

@@ -11,11 +11,12 @@
  * one line, the chips that fit and "+N more"; clicking into it shows everyone again. A red chip
  * keeps the row open, so it can be fixed.
  */
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { api } from '../../api/client';
 import { parseRecipients, withRecipients, type Recipient } from '../../utils/replyDraft';
 import { fieldLabel, fieldRow } from './styles';
+import { Tooltip } from '../../ui/Tooltip';
 
 interface RecipientFieldProps {
     label: 'To' | 'Cc' | 'Bcc';
@@ -48,13 +49,14 @@ const INPUT_ROOM = 16;
 const Marked: React.FC<{ text: string; typed: string }> = ({ text, typed }) => {
     const at = text.toLowerCase().startsWith(typed) ? 0 : text.toLowerCase().indexOf(` ${typed}`) + 1;
     if (!typed || at < 0 || (at === 0 && !text.toLowerCase().startsWith(typed))) return <>{text}</>;
-    return <>{text.slice(0, at)}<b style={{ fontWeight: 'var(--weight-semibold)' }}>{text.slice(at, at + typed.length)}</b>{text.slice(at + typed.length)}</>;
+    return <>{text.slice(0, at)}<b style={{ fontWeight: 'var(--weight-medium)' }}>{text.slice(at, at + typed.length)}</b>{text.slice(at + typed.length)}</>;
 };
 
 export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipients, onChange, gutter, gutterContent, onActivate, placeholder, trailing, autoFocus }) => {
     const [text, setText] = useState('');
     const [found, setFound] = useState<{ query: string; contacts: Contact[] } | null>(null);
     const [picked, setPicked] = useState(0);
+    const listId = useId(); // the suggestions, for the combobox (aria-controls, aria-activedescendant)
     const asked = useRef(0);
     const query = text.trim().toLowerCase();
     const added = new Set(recipients.map(r => r.address.toLowerCase()));
@@ -147,6 +149,7 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
             e.preventDefault();
             pick(suggestions[Math.min(picked, suggestions.length - 1)]);
         } else if (open && e.key === 'Escape') {
+            e.preventDefault(); // the suggestions close, not the composer
             setFound(null);
         } else if ((e.key === 'Enter' || e.key === 'Tab') && text.trim()) {
             if (e.key === 'Enter') e.preventDefault();
@@ -188,13 +191,13 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
                     style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '4px',
-                        padding: '4px 4px 4px 12px',
-                        background: 'var(--pill-bg)',
-                        border: r.invalid ? '1px solid var(--color-danger)' : '1px solid var(--pill-border)',
-                        borderRadius: 'var(--radius-pill)',
-                        color: r.invalid ? 'var(--color-danger)' : 'var(--pill-text)',
-                        fontSize: 'var(--font-size-sm)',
+                        gap: 'var(--space-1)',
+                        padding: 'var(--space-1) var(--space-1) var(--space-1) var(--space-3)',
+                        background: 'var(--fill-selected)',
+                        border: r.invalid ? '1px solid var(--danger)' : '1px solid var(--line-2)',
+                        borderRadius: 'var(--radius-2)',
+                        color: r.invalid ? 'var(--danger)' : 'var(--text-1)',
+                        fontSize: 'var(--size-body)',
                         whiteSpace: 'nowrap',
                         // Folded, a first name too long for the line on its own shortens with "…"
                         flexShrink: folded && fits === 1 && i === 0 ? 1 : 0,
@@ -204,27 +207,29 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
                     }}
                 >
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name || r.address}</span>
-                    <button
-                        type="button"
-                        aria-label={`Remove ${r.name || r.address}`}
-                        onClick={() => onChange(recipients.filter(x => x !== r))}
-                        className="em-icon-button"
-                        style={{
-                            width: '20px',
-                            height: '20px',
-                            borderRadius: 'var(--radius-full)',
-                            border: 0,
-                            background: 'transparent',
-                            color: 'var(--color-text-muted)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: 0,
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <X size={14} aria-hidden="true" />
-                    </button>
+                    <Tooltip content={`Remove ${r.name || r.address}`}>
+                        <button
+                            type="button"
+                            aria-label={`Remove ${r.name || r.address}`}
+                            onClick={() => onChange(recipients.filter(x => x !== r))}
+                            className="em-icon-button"
+                            style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: 'var(--radius-full)',
+                                border: 0,
+                                background: 'transparent',
+                                color: 'var(--text-3)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: 0,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <X size={14} aria-hidden="true" />
+                        </button>
+                    </Tooltip>
                 </span>
             ))}
             {hidden > 0 && (
@@ -237,14 +242,14 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
                     className="em-icon-button"
                     style={{
                         flexShrink: 0,
-                        padding: '4px 8px',
+                        padding: 'var(--space-1) var(--space-2)',
                         border: 0,
                         borderRadius: 'var(--radius-full)',
                         background: 'transparent',
                         fontFamily: 'inherit',
-                        fontSize: 'var(--font-size-sm)',
-                        fontWeight: 'var(--weight-semibold)',
-                        color: 'var(--color-text-muted)',
+                        fontSize: 'var(--size-body)',
+                        fontWeight: 'var(--weight-medium)',
+                        color: 'var(--text-3)',
                         whiteSpace: 'nowrap',
                         cursor: 'pointer'
                     }}
@@ -255,6 +260,11 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
             <input
                 ref={inputRef}
                 aria-label={label}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={open}
+                aria-controls={open ? listId : undefined}
+                aria-activedescendant={open ? `${listId}-${Math.min(picked, suggestions.length - 1)}` : undefined}
                 type="email"
                 value={text}
                 autoFocus={autoFocus}
@@ -271,50 +281,50 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
                 style={{
                     flex: 1,
                     minWidth: folded ? 0 : '60px',
-                    border: 0,
-                    outline: 'none',
+                    border: 0, // edgeless; the focus ring is the page's (rule K3)
                     background: 'transparent',
                     fontFamily: 'inherit',
-                    fontSize: 'var(--font-size-sm)',
-                    color: 'var(--color-text-main)',
-                    padding: '4px 0'
+                    fontSize: 'var(--size-body)',
+                    color: 'var(--text-1)',
+                    padding: 'var(--space-1) 0'
                 }}
             />
             {trailing && <span ref={trailingRef} style={{ marginLeft: 'auto', display: 'flex', flexShrink: 0 }}>{trailing}</span>}
             {open && (
-                <div role="listbox" aria-label="Suggestions" style={{
+                <div id={listId} role="listbox" aria-label="Suggestions" style={{
                     position: 'absolute',
-                    zIndex: 25,
+                    zIndex: 25, // layer: popover, local (inside the composer)
                     left: `${gutter + 66}px`,
                     top: '100%',
                     width: '340px',
                     maxWidth: 'calc(100% - 20px)',
                     background: 'var(--surface-raised)',
-                    border: '1px solid var(--border-strong)',
-                    borderRadius: 'var(--radius-md)',
-                    boxShadow: 'var(--shadow-menu)',
-                    padding: '4px'
+                    border: '1px solid var(--line-2)',
+                    borderRadius: 'var(--radius-3)',
+                    boxShadow: 'var(--shadow-raised)',
+                    padding: 'var(--space-1)'
                 }}>
                     {suggestions.map((c, i) => (
                         <div
                             key={c.address}
+                            id={`${listId}-${i}`}
                             role="option"
                             aria-selected={i === picked}
                             onMouseDown={e => { e.preventDefault(); pick(c); }} // before the field loses focus
                             onMouseEnter={() => setPicked(i)}
                             style={{
-                                padding: '8px 12px',
-                                borderRadius: 'max(4px, calc(var(--radius-md) - 4px))',
-                                background: i === picked ? 'var(--color-bg-subtle)' : 'transparent',
-                                fontSize: 'var(--font-size-sm)',
-                                color: 'var(--color-text-main)',
+                                padding: 'var(--space-2) var(--space-3)',
+                                borderRadius: 'max(var(--radius-1), calc(var(--radius-3) - var(--space-1)))',
+                                background: i === picked ? 'var(--surface-1)' : 'transparent',
+                                fontSize: 'var(--size-body)',
+                                color: 'var(--text-1)',
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 cursor: 'pointer'
                             }}
                         >
-                            {c.name ? <><Marked text={c.name} typed={query} /> <span style={{ color: 'var(--color-text-muted)' }}><Marked text={c.address} typed={query} /></span></>
+                            {c.name ? <><Marked text={c.name} typed={query} /> <span style={{ color: 'var(--text-3)' }}><Marked text={c.address} typed={query} /></span></>
                                 : <Marked text={c.address} typed={query} />}
                         </div>
                     ))}

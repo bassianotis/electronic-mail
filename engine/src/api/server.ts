@@ -948,7 +948,9 @@ export function createApiServer(ctx: ApiContext): http.Server {
                 : err instanceof RuleError || err instanceof ComposeError || err instanceof UploadError ? 400
                 : err instanceof OutboxError ? 409
                 : err instanceof AccountError || err instanceof SettingsError ? 400
-                : /offline/.test((err as Error)?.message ?? '') ? 503
+                // An account that's offline is the engine answering, not a proxy standing in for it:
+                // 409, so the screens say so instead of taking Mail's own server for down (503)
+                : /offline/.test((err as Error)?.message ?? '') ? 409
                 : 500;
             if (status === 500) ctx.log?.(`API ${req.method} ${url.pathname}: ${(err as Error)?.stack ?? err}`);
             // A reason says why, for the screens: who signed out (401), or which server refused (AccountError)

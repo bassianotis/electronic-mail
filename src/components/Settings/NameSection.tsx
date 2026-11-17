@@ -2,12 +2,12 @@
  * Name and signature (settings-spec.md §3): each field saves on its own as you go. Your name never
  * tests the sending server any more (it used to be saved with it, so a slow server blocked it).
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, acct } from '../../api/client';
 import type { Account, AccountSettings } from '../../api/types';
 import { useMail } from '../../context/MailContext';
-import { Field, FieldsSkeleton, LoadFailed } from './parts';
-import { TYPING_PAUSE_MS, useSaving, useSectionData } from './useSettings';
+import { Field, FieldsSkeleton, LoadFailed, SavedLine } from './parts';
+import { TYPING_PAUSE_MS, useSaving, useSectionData, type SaveState } from './useSettings';
 
 /** The engine's limits (engine/src/app/accounts.ts). */
 const TAB_NAME_MAX = 12;
@@ -29,6 +29,15 @@ const NameFields: React.FC<{ account: Account; settings: AccountSettings }> = ({
         await api.patch(acct(account.id), body);
         await fetchAccounts(); // the rail's tab, the composer's name and signature
     };
+    // One quiet "Saved" for the section, under its fields (board P5, change 1): the latest field's,
+    // back to quiet when its "Saved" has had its time (unless another field has spoken since)
+    const [state, setState] = useState<SaveState>('idle');
+    const last = useRef<string | null>(null);
+    const report = useCallback((id: string, next: SaveState) => {
+        if (next === 'idle' && last.current !== id) return;
+        last.current = id;
+        setState(next);
+    }, []);
     return (
         <>
             <AutoField
@@ -38,6 +47,7 @@ const NameFields: React.FC<{ account: Account; settings: AccountSettings }> = ({
                 initial={settings.displayName ?? ''}
                 same={(a, b) => a.trim() === b.trim()}
                 save={v => patch({ displayName: v.trim() || null })}
+                onState={report}
             />
             <AutoField
                 id="st-tab"
@@ -50,6 +60,7 @@ const NameFields: React.FC<{ account: Account; settings: AccountSettings }> = ({
                 aside={v => ([...v].length > 10 ? `${[...v].length} of ${TAB_NAME_MAX}` : null)}
                 same={(a, b) => a.trim() === b.trim()}
                 save={v => patch({ tabName: v.trim() || null })}
+                onState={report}
             />
             <AutoField
                 id="st-signature"
@@ -59,7 +70,9 @@ const NameFields: React.FC<{ account: Account; settings: AccountSettings }> = ({
                 check={v => (v.length > SIGNATURE_MAX ? 'Signatures can be up to 2,000 characters' : null)}
                 same={(a, b) => a.trimEnd() === b.trimEnd()}
                 save={v => patch({ signature: v.trim() ? v : null })}
+                onState={report}
             />
+            <SavedLine state={state} style={{ marginTop: 'calc(-1 * var(--space-2))' }} />
         </>
     );
 };
@@ -82,12 +95,15 @@ const AutoField: React.FC<{
     check?: (value: string) => string | null;
     same: (a: string, b: string) => boolean;
     save: (value: string) => Promise<void>;
-}> = ({ id, label, hint, initial, placeholder, maxLength, width, rows, aside, check, same, save }) => {
+    /** Its "Saving…" / "Saved", for the section's one line under the fields */
+    onState: (id: string, state: SaveState) => void;
+}> = ({ id, label, hint, initial, placeholder, maxLength, width, rows, aside, check, same, save, onState }) => {
     const [value, setValue] = useState(initial);
     const saved = useRef(initial);
     const latest = useRef(initial);
     const pause = useRef<number | undefined>(undefined);
     const saving = useSaving(save);
+    useEffect(() => { onState(id, saving.state); }, [id, saving.state, onState]);
     const own = check?.(value) ?? null;
 
     const flush = useRef(() => {});
@@ -116,7 +132,7 @@ const AutoField: React.FC<{
     const problem = own ?? saving.problem;
     const common = {
         id,
-        className: 'st-input',
+        className: rows ? 'ba-input ba-textarea' : 'ba-input',
         value,
         placeholder,
         maxLength,
@@ -126,7 +142,7 @@ const AutoField: React.FC<{
         style: width ? { maxWidth: width } : undefined,
     };
     return (
-        <Field label={label} htmlFor={id} saved={saving.state} aside={aside?.(value)} hint={hint} hintId={`${id}-hint`} problem={problem} problemId={`${id}-problem`}>
+        <Field label={label} htmlFor={id} aside={aside?.(value)} hint={hint} hintId={`${id}-hint`} problem={problem} problemId={`${id}-problem`}>
             {rows
                 ? <textarea {...common} rows={rows} onChange={e => onChange(e.target.value)} />
                 : <input {...common} type="text" spellCheck={false} onChange={e => onChange(e.target.value)}

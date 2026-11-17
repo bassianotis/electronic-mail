@@ -6,8 +6,10 @@ import { useDragDropActions } from '../../context/DragDropContext';
 import { useMail } from '../../context/MailContext';
 import { formatListDate } from '../../utils/formatDate';
 import { DraftBadge } from './DraftBadge';
+import { ThreadLink } from './ThreadLink';
+import { Z } from '../../utils/layers';
 import { type Arrivals, useEntrance } from '../../hooks/useArrivals';
-import { DURATION, noNativeAnimation, tween } from '../../utils/motion';
+import { DURATION, leave, noNativeAnimation, tween } from '../../utils/motion';
 import { inDockStrip } from '../../utils/dropTargets';
 import { useDragLook } from '../../hooks/useDragLook';
 import { formatCount } from '../../utils/format';
@@ -36,7 +38,7 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
             if (typeof ref === 'function') ref(el);
             else if (ref) ref.current = el;
         };
-        const look = useDragLook(cardRef, 0.6);
+        const look = useDragLook(cardRef);
         const [showSenderEmail, setShowSenderEmail] = React.useState(false);
         const enters = useEntrance(arrivals, email.id);
 
@@ -197,29 +199,31 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                 initial={enters ? { opacity: 0, scale: 0.95 } : false}
                 onUpdate={noNativeAnimation}
                 animate={look.animate({ opacity: 1, scale: 1 })}
-                exit={{ opacity: 0, scale: 0.97, transition: tween(DURATION.mid) }}
+                exit={{ opacity: 0, scale: 0.97, transition: leave(DURATION.mid) }}
                 transition={tween(DURATION.mid)}
                 whileDrag={look.whileDrag}
                 onClick={handleClick}
+                data-thread-card=""
                 style={{
-                    backgroundColor: 'var(--surface-card)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 'var(--card-pad)',
-                    border: '1px solid var(--color-border)',
+                    backgroundColor: 'var(--surface-1)',
+                    borderRadius: 'var(--radius-3)',
+                    padding: 'var(--card-padding)',
+                    border: '1px solid var(--line-1)',
                     cursor: 'grab',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 'var(--space-sm)',
+                    gap: 'var(--space-2)',
                     height: '100%',
                     minWidth: 0, // a grid cell: long text can't widen its column
                     position: 'relative', // for its z-index while away from its slot
-                    transformOrigin: look.origin,
+                    originX: look.originX,
+                    originY: look.originY,
                     x: look.x,
                     y: look.y,
-                    zIndex: look.raised ? 9999 : undefined
+                    zIndex: look.raised ? Z.drag.card : undefined
                 }}
             >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)', fontSize: 'var(--size-sender-line)', color: 'var(--color-text-muted)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', fontSize: 'var(--size-body)', color: 'var(--text-3)' }}>
                     <span
                         // A long sender (an unbroken address) ends in "…" rather than pushing the card wider
                         style={{ cursor: email.senderAddress ? 'pointer' : 'default', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -232,15 +236,15 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                     >
                         {showSenderEmail && email.senderAddress ? email.senderAddress : email.sender}
                     </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
                         {hasDraft && <DraftBadge />}
                         {threadCount && threadCount > 1 && (
                             <span style={{
-                                backgroundColor: 'var(--thread-badge)',
-                                color: 'var(--thread-badge-text)',
-                                fontSize: 'var(--font-size-2xs)',
-                                fontWeight: 'var(--weight-semibold)',
-                                padding: 'var(--thread-badge-pad)',
+                                backgroundColor: 'transparent',
+                                color: 'var(--text-4)',
+                                fontSize: 'var(--size-caption)',
+                                fontWeight: 'var(--weight-medium)',
+                                padding: '0',
                                 borderRadius: 'var(--radius-full)',
                                 minWidth: '20px',
                                 textAlign: 'center',
@@ -249,22 +253,22 @@ export const EmailCard = React.forwardRef<HTMLDivElement, EmailCardProps>(
                                 {formatCount(threadCount)}
                             </span>
                         )}
-                        <span style={{ fontSize: 'var(--size-date)', color: 'var(--color-text-faint)', fontVariantNumeric: 'var(--date-numerals)' }}>{formatListDate(email.date)}</span>
+                        <span style={{ fontSize: '1em', color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>{formatListDate(email.date)}</span>
                     </div>
                 </div>
 
                 <h3 style={{
-                    fontSize: 'var(--size-card-title)',
-                    fontWeight: 'var(--weight-semibold)',
-                    color: 'var(--color-text-main)',
+                    fontSize: 'var(--size-title)',
+                    fontWeight: 'var(--weight-medium)',
+                    color: 'var(--text-1)',
                     lineHeight: 1.3
                 }}>
-                    {email.subject}
+                    <ThreadLink threadId={email.threadId} onOpen={handleClick}>{email.subject}</ThreadLink>
                 </h3>
 
                 <p className="text-muted" style={{
-                    fontSize: 'var(--size-preview)',
-                    color: 'var(--color-text-faint)',
+                    fontSize: 'var(--size-body)',
+                    color: 'var(--text-4)',
                     display: '-webkit-box',
                     WebkitLineClamp: 3,
                     WebkitBoxOrient: 'vertical',

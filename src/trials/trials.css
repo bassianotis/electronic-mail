@@ -1,0 +1,100 @@
+/* Design trials (DesignTrials.tsx): bottom left, clear of the reply bar (bottom centre) and the
+   previous / next pill (bottom right); on the panel layer: above the reading view and Search (the
+   view layer), below dialogs (Settings, the bucket dialog) and notices. */
+.dt-panel {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: var(--layer-panel);
+    width: 188px;
+    box-sizing: border-box;
+    padding: var(--space-3);
+    background: var(--surface-raised);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-3);
+    box-shadow: var(--shadow-raised);
+    color: var(--text-1);
+    font-size: var(--size-small);
+    line-height: 1.4;
+}
+
+.dt-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
+}
+
+.dt-head h2 {
+    margin: 0;
+    font-size: var(--size-small);
+    font-weight: 500;
+}
+
+.dt-close {
+    width: 24px;
+    height: 24px;
+    margin: -4px -4px -4px 0;
+    border-radius: var(--radius-2);
+    color: var(--text-3);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dt-close:hover {
+    background: var(--fill-hover);
+    color: var(--text-1);
+}
+
+.dt-panel fieldset {
+    margin: 0 0 10px;
+    padding: 0;
+    border: 0;
+}
+
+.dt-panel legend {
+    padding: 0;
+    margin-bottom: var(--space-1);
+    font-size: var(--size-caption);
+    color: var(--text-4);
+}
+
+.dt-option {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: 3px 0;
+    cursor: pointer;
+}
+
+.dt-option input {
+    margin: 2px 0 0;
+    flex-shrink: 0;
+    accent-color: var(--action);
+}
+
+.dt-problem {
+    margin: 0 0 var(--space-2);
+    font-size: var(--size-caption);
+    color: var(--danger);
+}
+
+.dt-reset {
+    width: 100%;
+    height: 28px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-2);
+    background: var(--fill-hover);
+    color: var(--text-1);
+    font-size: var(--size-caption);
+}
+
+.dt-reset:hover:not(:disabled) {
+    background: var(--fill-selected);
+}
+
+.dt-reset:disabled {
+    color: var(--text-4);
+    cursor: default;
+}

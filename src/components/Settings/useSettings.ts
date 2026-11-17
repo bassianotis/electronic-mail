@@ -3,7 +3,7 @@
  * section's data for one account, and the times the password status shows.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { errorText } from '../../api/client';
+import { reasonOr } from '../../api/client';
 
 /** "Saving…" shows only when a save takes longer than this; "Saved" stays this long. */
 const SAVING_AFTER_MS = 300;
@@ -44,7 +44,7 @@ export function useSaving<T>(save: (value: T) => Promise<void>) {
             if (latest.current !== n) return false;
             clear();
             setState('idle');
-            setProblem(sentence(errorText(err)));
+            setProblem(reasonOr('save it', err));
             return false;
         }
     }, [save]);

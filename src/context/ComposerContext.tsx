@@ -14,7 +14,7 @@
  * its notice runs out.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, ApiError, AUTH_REQUIRED_EVENT, errorText, paths, SESSION_RESTORED_EVENT, uploadFile } from '../api/client';
+import { api, ApiError, AUTH_REQUIRED_EVENT, couldnt, paths, SESSION_RESTORED_EVENT, uploadFile } from '../api/client';
 import type { DraftContent, OutboxItem } from '../api/types';
 import type { Email } from '../store/mailStore';
 import { useMail } from './MailContext';
@@ -114,7 +114,6 @@ const DRAFT_SAVE_DELAY_MS = 2500;
 /** How long the engine holds a sent message, so Undo can still take it back. */
 const HOLD_MS = 5000;
 /** How long "Draft discarded · Undo" stays; the server's copy is deleted after it. */
-const DISCARD_NOTICE_MS = 6000;
 
 interface ComposerContextType {
     draft: ComposerDraft | null;
@@ -325,6 +324,9 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (track.current.id === d.id && track.current.edits > track.current.saved) ok = await saveDraft(d);
         const msgKey = server.current.get(d.id)?.msgKey;
         if (!ok) {
+            // Close never loses words (board P4, change 2): what couldn't reach the server is kept on
+            // this computer too, and offered back if the page is opened again
+            keepDraft(d, server.current.get(d.id) ?? { msgKey: null, replaces: null }, false);
             showToast({
                 message: "Couldn't save the draft", tone: 'error',
                 actions: [{ label: 'Open', onClick: () => reopenFrom.current(d, true) }],
@@ -380,7 +382,7 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
             })
             .catch(err => {
                 if (draftRef.current?.id !== draftId) return;
-                update(d => ({ attachments: d.attachments.map(a => (keys.includes(a.key) ? { ...a, error: `Couldn't copy it from the original: ${errorText(err)}` } : a)) }), false);
+                update(d => ({ attachments: d.attachments.map(a => (keys.includes(a.key) ? { ...a, error: couldnt('copy it from the original', err) } : a)) }), false);
             });
     }, [update]);
 
@@ -508,7 +510,7 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
                     update({ fromAccountId: before }, false);
                     setStatus('failed');
                 }
-                showToast({ message: `Couldn't move the draft: ${errorText(err)}`, tone: 'error' });
+                showToast({ message: couldnt('move the draft', err), tone: 'error' });
                 return false;
             } finally {
                 saving.current = null;
@@ -541,7 +543,7 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, [begin]);
 
     // No confirmation: the draft goes, with Undo on the notice. Its copy on the server is deleted
-    // only when the notice runs out (closing the tab meanwhile keeps it).
+    // only when the notice goes without Undo (closing the tab meanwhile keeps it).
     const discard = useCallback(async () => {
         const d = draftRef.current;
         if (!d) return;
@@ -554,24 +556,27 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
         const msgKeyNow = server.current.get(d.id)?.msgKey ?? null;
         if (msgKeyNow) setDiscarding(list => [...list, msgKeyNow]);
         let undone = false;
-        const deleteLater = setTimeout(async () => {
+        // Deleted on the server when the notice goes without Undo (it runs out, is dismissed or replaced)
+        const deleteNow = async () => {
             if (undone) return;
+            undone = true;
             if (saving.current) await saving.current;
             const msgKey = server.current.get(d.id)?.msgKey;
             try {
                 if (msgKey) await api.del(paths.draft(d.fromAccountId, msgKey));
             } catch (err) {
-                showToast({ message: `Couldn't delete the draft: ${errorText(err)}`, tone: 'error' });
+                showToast({ message: couldnt('discard the draft', err), tone: 'error' }); // an unsent draft is discarded (rule W3)
             } finally {
                 if (msgKeyNow) setDiscarding(list => list.filter(k => k !== msgKeyNow));
             }
-        }, DISCARD_NOTICE_MS);
+        };
         showToast({
-            message: 'Draft discarded', durationMs: DISCARD_NOTICE_MS,
+            message: 'Draft discarded',
+            onDone: () => void deleteNow(),
             actions: [{
                 label: 'Undo', onClick: () => {
+                    if (undone) return;
                     undone = true;
-                    clearTimeout(deleteLater);
                     if (msgKeyNow) setDiscarding(list => list.filter(k => k !== msgKeyNow));
                     void showAgain(d, unsaved);
                 },
@@ -615,7 +620,7 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
                     await api.post(`${paths.outboxItem(current.fromAccountId, item.id)}/cancel`);
                 } catch (err) {
                     const gone = (err as { status?: number }).status === 409;
-                    showToast({ message: gone ? 'Already sent' : `Couldn't take it back: ${errorText(err)}`, tone: gone ? 'info' : 'error' });
+                    showToast({ message: gone ? 'Already sent' : couldnt('take it back', err), tone: gone ? 'info' : 'error' });
                     return;
                 }
                 tell({ kind: 'undone', item, ...about });
@@ -675,7 +680,7 @@ export const ComposerProvider: React.FC<{ children: ReactNode }> = ({ children }
                 })
                 .catch(err => {
                     if (draftRef.current?.id !== d.id) return;
-                    update(current => ({ attachments: current.attachments.map(a => (a.key === key ? { ...a, progress: undefined, error: `Couldn't attach it: ${errorText(err)}` } : a)) }), false);
+                    update(current => ({ attachments: current.attachments.map(a => (a.key === key ? { ...a, progress: undefined, error: couldnt('attach it', err) } : a)) }), false);
                 });
         }
     }, [update]);

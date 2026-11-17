@@ -5,6 +5,7 @@
  */
 import type { UploadInfo } from './types';
 import { isGatewayFailure, reachability } from './reachability';
+import { UNREACHABLE, asSentence, failedLine, plainWords, tryAgain } from './engineWords';
 
 const BASE = '/api/v2';
 
@@ -30,8 +31,6 @@ export const SESSION_RESTORED_EVENT = 'em:session-restored';
 function noteSignedOut(status: number, path: string, reason?: string | null): void {
     if (status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT, { detail: { reason: reason ?? null } }));
 }
-
-const UNREACHABLE = "The app can't reach its server";
 
 /** Whether the engine itself answered (any status), or a proxy answered for it because it's down. */
 function noteReached(status: number, contentType: string | null): boolean {
@@ -84,6 +83,8 @@ export const urls = {
         `${BASE}${acct(accountId)}/messages/${enc(msgKey)}/attachments/${part}`,
     exportSettings: `${BASE}/settings/export`,
     events: `${BASE}/events`,
+    /** For a request sent as the page closes (fetch with keepalive). */
+    of: (path: string) => `${BASE}${path}`,
 };
 
 export const paths = {
@@ -157,7 +158,25 @@ export async function downloadFile(url: string, fallbackName: string): Promise<v
     setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
 }
 
-/** A plain-language message for any error thrown by the calls above. */
-export function errorText(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
+/**
+ * Why a call above failed, in plain words, as a clause to follow "Couldn't …: " (engineWords.ts):
+ * the server not answering, or what the engine said when it says it for people. Null otherwise:
+ * then the line says only what failed (`couldnt`).
+ */
+export function reasonFor(err: unknown): string | null {
+    if (err instanceof ApiError) return err.status === 0 ? UNREACHABLE : plainWords(err.message);
+    return null;
+}
+
+/** A failure in one line: "Couldn't <action>: <why>", or "Couldn't <action>. Try again." */
+export const couldnt = (action: string, err: unknown) => failedLine(action, reasonFor(err));
+
+/**
+ * A failure where the action is already named, or the line stands under its field: the reason on
+ * its own (a capital letter; `full` adds the full stop), or "Couldn't <action>. Try again."
+ */
+export function reasonOr(action: string, err: unknown, full = false): string {
+    const why = reasonFor(err);
+    if (!why) return tryAgain(action);
+    return full ? asSentence(why) : why[0].toUpperCase() + why.slice(1);
 }

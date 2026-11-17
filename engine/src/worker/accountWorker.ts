@@ -332,7 +332,9 @@ export class AccountWorker extends EventEmitter {
                 try {
                     jobResult = { value: await queued!.fn(client) };
                 } catch (err) {
-                    queued!.reject(err);
+                    // The connection went mid-job: say the account is offline, not the socket's
+                    // own words (which the API could only answer as "internal error")
+                    queued!.reject(client.usable ? err : new Error(`${this.account.email} is offline`));
                     if (!client.usable) throw err;
                 }
                 // Folders may have been created, renamed or emptied: bring the cache up to date

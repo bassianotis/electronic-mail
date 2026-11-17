@@ -10,7 +10,7 @@ import { RAIL_WIDTH } from '../Layout/AccountRail';
 export const StartFrame = () => {
     const shown = useAfter();
     return (
-        <div aria-busy="true" aria-label="Loading" style={{ display: 'flex', height: '100vh', backgroundColor: 'var(--color-bg)', overflow: 'hidden' }}>
+        <div aria-busy="true" aria-label="Loading" style={{ display: 'flex', height: '100vh', backgroundColor: 'var(--bg-page)', overflow: 'hidden' }}>
             {shown && (
                 <>
                     <div style={{
@@ -20,41 +20,41 @@ export const StartFrame = () => {
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'flex-end',
-                        gap: '8px',
-                        backgroundColor: 'var(--rail-bg)',
-                        boxShadow: 'inset -1px 0 0 var(--rail-edge)',
+                        gap: 'var(--space-2)',
+                        backgroundColor: 'var(--bg-rail)',
+                        boxShadow: 'inset -1px 0 0 transparent',
                     }}>
-                        <Bone w={32} h={96} r="var(--radius-control) 0 0 var(--radius-control)" />
-                        <Bone w={32} h={84} r="var(--radius-control) 0 0 var(--radius-control)" />
+                        <Bone w={32} h={96} r="var(--radius-2) 0 0 var(--radius-2)" />
+                        <Bone w={32} h={84} r="var(--radius-2) 0 0 var(--radius-2)" />
                     </div>
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-                        <div style={{ height: 64, display: 'grid', gridTemplateColumns: '1fr minmax(auto, 480px) 1fr', alignItems: 'center', padding: '0 var(--space-lg)' }}>
-                            <Bone w={150} h={20} style={{ marginLeft: 12 }} />
+                        <div style={{ height: 64, display: 'grid', gridTemplateColumns: '1fr minmax(auto, 480px) 1fr', alignItems: 'center', padding: '0 var(--space-6)' }}>
+                            <Bone w={150} h={20} style={{ marginLeft: 'var(--space-3)' }} />
                             <Bone w="100%" h={42} />
-                            <span style={{ justifySelf: 'end', display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
+                            <span style={{ justifySelf: 'end', display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
                                 <Bone w={114} h={34} />
                                 <Bone w={24} h={24} />
                             </span>
                         </div>
-                        <div style={{ maxWidth: '800px', width: '100%', margin: '0 auto', paddingTop: 'var(--space-xl)' }}>
-                            <Bone w={110} h={28} r="var(--radius-sm)" style={{ marginBottom: 'var(--space-lg)' }} />
+                        <div style={{ maxWidth: '800px', width: '100%', margin: '0 auto', paddingTop: 'var(--space-8)' }}>
+                            <Bone w={110} h={28} r="var(--radius-2)" style={{ marginBottom: 'var(--space-6)' }} />
                             <InboxCardSkeleton />
                             <InboxCardSkeleton />
                             <InboxCardSkeleton />
                         </div>
                         <div style={{
                             position: 'absolute',
-                            bottom: 'var(--space-lg)',
+                            bottom: 'var(--space-6)',
                             left: '50%',
                             transform: 'translateX(-50%)',
                             display: 'flex',
-                            gap: '12px',
-                            padding: '12px 16px',
-                            borderRadius: 'var(--radius-lg)',
-                            border: '1px solid var(--color-border)',
-                            backgroundColor: 'var(--surface-card)',
+                            gap: 'var(--space-3)',
+                            padding: 'var(--space-3) var(--space-4)',
+                            borderRadius: 'var(--radius-3)',
+                            border: '1px solid var(--line-1)',
+                            backgroundColor: 'var(--surface-1)',
                         }}>
-                            {[0, 1, 2, 3, 4].map(i => <Bone key={i} w={48} h={48} r="var(--radius-md)" />)}
+                            {[0, 1, 2, 3, 4].map(i => <Bone key={i} w={48} h={48} r="var(--radius-3)" />)}
                         </div>
                     </div>
                 </>

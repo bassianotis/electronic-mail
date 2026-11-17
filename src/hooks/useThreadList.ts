@@ -8,7 +8,8 @@
  * next page (by offset). A change refreshes the rows already loaded, from the top.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, acct, errorText } from '../api/client';
+import { api, acct, reasonFor } from '../api/client';
+import { asSentence } from '../api/engineWords';
 import { useAccountState, useSessionEpoch } from '../api/events';
 import { isHidden, takeTicket, useMovingVersion } from '../api/moving';
 import type { ThreadCard, ViewPage } from '../api/types';
@@ -27,7 +28,10 @@ export interface ThreadList {
     /** How many conversations the list holds in all (not just the loaded pages). */
     count: number;
     loading: boolean;
+    /** Why the list couldn't load, as a sentence ("The server isn't answering."); null while it's fine */
     error: string | null;
+    /** Try again: asks for the list afresh (it shows as loading meanwhile) */
+    retry: () => void;
     hasMore: boolean;
     loadingMore: boolean;
     /** The last page asked for didn't load (the rest stays); loadMore tries it again. */
@@ -52,6 +56,10 @@ async function fetchRows(accountId: string, query: ThreadListQuery, offset: numb
 
 type Shown = { key: string; ticket: number; page: ViewPage };
 
+/** Why a list couldn't load, after "Couldn't load the Inbox." (board P7, change 1): the server not
+ *  answering, or what it said; with nothing worth saying, "Try again." (owner, Checkpoint C). */
+const whyText = (err: unknown) => { const why = reasonFor(err); return why ? asSentence(why) : 'Try again.'; };
+
 export function useThreadList(accountId: string | null, query: ThreadListQuery | null, pageSize = 50): ThreadList {
     const state = useAccountState(accountId);
     const sessionEpoch = useSessionEpoch();
@@ -59,6 +67,7 @@ export function useThreadList(accountId: string | null, query: ThreadListQuery |
     const [shown, setShown] = useState<Shown | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [more, setMore] = useState<'idle' | 'loading' | 'failed'>('idle');
+    const [attempt, setAttempt] = useState(0);
     const shownRef = useRef<Shown | null>(null);
     const moreRef = useRef(false);
     const shownTicket = useRef(0);
@@ -96,10 +105,16 @@ export function useThreadList(accountId: string | null, query: ThreadListQuery |
                 setError(null);
             })
             .catch(err => {
-                if (shownKey.current === key && ticket >= shownTicket.current) setError(errorText(err));
+                if (shownKey.current === key && ticket >= shownTicket.current) setError(whyText(err));
             });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [queryKey, state, sessionEpoch, pageSize]);
+    }, [queryKey, state, sessionEpoch, pageSize, attempt]);
+
+    // Try again: the failure gives way to loading, and the list is asked for afresh
+    const retry = useCallback(() => {
+        setError(null);
+        setAttempt(a => a + 1);
+    }, []);
 
     // The next page only, appended to what is loaded.
     const loadMore = useCallback(() => {
@@ -133,8 +148,9 @@ export function useThreadList(accountId: string | null, query: ThreadListQuery |
             loadingMore: more === 'loading',
             moreFailed: more === 'failed',
             loadMore,
+            retry,
         };
         // movingVersion: re-filter when a move starts, settles or is refused
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [shown, error, more, loadMore, movingVersion]);
+    }, [shown, error, more, loadMore, retry, movingVersion]);
 }

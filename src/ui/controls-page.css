@@ -1,0 +1,29 @@
+/* The controls test page (?controls, development only): its own layout, nothing else. */
+.cp-page { box-sizing: border-box; max-width: 1200px; margin: 0 auto; padding: var(--space-12) var(--space-6) 160px; color: var(--text-1); }
+.cp-head h1 { margin: var(--space-1) 0 var(--space-8); font-size: var(--size-page); font-weight: var(--weight-medium); }
+.cp-kicker { margin: 0; font-size: var(--size-small); color: var(--text-3); }
+.cp-section { margin-bottom: var(--space-8); padding: var(--space-6); border: 1px solid var(--line-1); border-radius: var(--radius-3); background: var(--surface-1); }
+.cp-section h2 { margin: 0 0 var(--space-5); font-size: var(--size-title); font-weight: var(--weight-medium); }
+.cp-grid { display: grid; gap: var(--space-4) var(--space-5); margin-bottom: var(--space-5); align-items: start; }
+.cp-grid--states { grid-template-columns: 90px repeat(6, minmax(0, max-content)); align-items: center; gap: var(--space-3) var(--space-5); }
+.cp-grid--3 { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cp-row { display: flex; flex-wrap: wrap; gap: var(--space-5) var(--space-8); align-items: flex-end; margin-bottom: var(--space-5); }
+.cp-row--top { align-items: flex-start; }
+.cp-row-head { font-size: var(--size-body); color: var(--text-2); text-transform: capitalize; }
+.cp-cell { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.cp-caption { font-size: var(--size-caption); color: var(--text-3); }
+.cp-stack { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.cp-stack--wide { align-items: stretch; }
+.cp-stack--wide > .ba-notice { align-self: flex-start; }
+.cp-question { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); max-width: 440px; }
+.cp-step-title { margin: var(--space-2) 0 0; font-size: var(--size-title); font-weight: var(--weight-medium); }
+.cp-static-menu { width: 240px; }
+.cp-static-menu .ba-menu__item { cursor: default; }
+.cp-static-menu .ba-menu__item[data-state="hover"] { background: var(--fill-hover); }
+.cp-ring { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.cp-static-tip { position: static; }
+@media (max-width: 640px) {
+    .cp-page { padding: var(--space-6) var(--space-4) 160px; }
+    .cp-grid--states { grid-template-columns: repeat(2, minmax(0, max-content)); }
+    .cp-grid--states > span:nth-child(-n+7) { display: none; }
+}

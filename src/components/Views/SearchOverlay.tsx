@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Archive, Inbox, Send } from 'lucide-react';
 import { type Email } from '../../store/mailStore';
 import { useMail } from '../../context/MailContext';
-import { api, acct, errorText } from '../../api/client';
+import { api, acct, reasonFor } from '../../api/client';
+import { tryAgain } from '../../api/engineWords';
 import type { ViewPage } from '../../api/types';
 import { cardFromThread } from '../../utils/emailMapper';
 import { usePublishList, type ListKey } from '../../hooks/conversationLists';
 import { formatListDate } from '../../utils/formatDate';
 import { AfterDelay, SearchResultSkeleton } from '../Loading/Skeletons';
 import { BucketGlyph } from '../Buckets/BucketGlyph';
-import { DURATION, tween } from '../../utils/motion';
+import { ThreadLink } from './ThreadLink';
+import { KEEP_OVER_VIEW, useEscape, useModal, Z } from '../../utils/layers';
+import { DURATION, leave, tween } from '../../utils/motion';
 import { formatCount } from '../../utils/format';
 
 interface SearchOverlayProps {
@@ -30,6 +33,11 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
     const [page, setPage] = useState<{ q: string; result: ViewPage } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [showSenderEmailMap, setShowSenderEmailMap] = useState<Record<string, boolean>>({});
+    // Modal (rule L3): the field takes the focus, Tab stays inside, the page behind is inert, and
+    // closing goes back to the top bar's Search
+    const layer = useRef<HTMLDivElement>(null);
+    useModal(layer, isOpen, { keep: KEEP_OVER_VIEW });
+    useEscape(isOpen, 'view', onClose); // rule L4
 
     // Clear search when account changes
     useEffect(() => {
@@ -53,7 +61,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                     setPage({ q, result });
                     setError(null);
                 })
-                .catch(err => { if (current) setError(errorText(err)); });
+                .catch(err => { if (current) { const why = reasonFor(err); setError(why ? `Search didn't work: ${why}` : tryAgain('search')); } });
         }, 150);
         return () => {
             current = false;
@@ -71,9 +79,14 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
         <AnimatePresence>
             {isOpen && (
                 <motion.div
+                    ref={layer}
+                    data-layer="view"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Search"
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
+                    exit={{ opacity: 0, y: -20, transition: leave() }}
                     transition={tween(DURATION.mid)}
                     style={{
                         position: 'fixed',
@@ -81,19 +94,19 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'var(--color-bg)',
-                        zIndex: 300,
+                        backgroundColor: 'var(--bg-page)',
+                        zIndex: Z.view.search,
                         display: 'flex',
                         flexDirection: 'column'
                     }}
                 >
                     {/* Header */}
                     <div style={{
-                        padding: 'var(--space-md) var(--space-lg)',
-                        borderBottom: '1px solid var(--color-border)',
+                        padding: 'var(--space-4) var(--space-6)',
+                        borderBottom: '1px solid var(--line-1)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 'var(--space-md)'
+                        gap: 'var(--space-4)'
                     }}>
                         <Search size={16} className="text-muted" />
                         <input
@@ -104,46 +117,48 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                             autoFocus
                             style={{
                                 flex: 1,
-                                border: 'none',
-                                outline: 'none',
-                                fontSize: 'var(--font-size-lg)',
+                                border: 'none', // edgeless; the focus ring is the page's (rule K3)
+                                fontSize: 'var(--size-title)',
                                 backgroundColor: 'transparent'
                             }}
                         />
                         <button
+                            type="button"
+                            aria-label="Close search"
+                            title="Close search"
                             onClick={onClose}
                             style={{
-                                padding: '8px',
-                                borderRadius: '50%',
-                                backgroundColor: 'var(--color-bg-subtle)',
-                                color: 'var(--color-text-muted)',
+                                padding: 'var(--space-2)',
+                                borderRadius: 'var(--radius-full)',
+                                backgroundColor: 'var(--surface-1)',
+                                color: 'var(--text-3)',
                                 border: 'none',
                                 cursor: 'pointer'
                             }}
                         >
-                            <X size={16} />
+                            <X size={16} aria-hidden="true" />
                         </button>
                     </div>
 
 
 
                     {/* Results */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-lg)' }}>
+                    <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-6)' }}>
                         {error && query && (
-                            <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', marginTop: 'var(--space-3xl)' }}>
-                                Search didn't work: {error}
+                            <div style={{ textAlign: 'center', color: 'var(--text-3)', marginTop: 'var(--space-16)' }}>
+                                {error}
                             </div>
                         )}
 
                         {page && page.result.count > results.length && (
-                            <div className="text-muted" style={{ fontSize: 'var(--font-size-sm)', marginBottom: 'var(--space-md)', fontVariantNumeric: 'tabular-nums' }}>
+                            <div className="text-muted" style={{ fontSize: 'var(--size-body)', marginBottom: 'var(--space-4)', fontVariantNumeric: 'tabular-nums' }}>
                                 Showing the newest {formatCount(results.length)} of {formatCount(page.result.count)} threads. Add a word to narrow it down.
                             </div>
                         )}
 
                         {/* Waiting with nothing to show yet: skeleton results (only if the wait is noticeable) */}
                         {query.trim() && page?.q !== query.trim() && !error && results.length === 0 && (
-                            <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                            <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                                 <AfterDelay>
                                     {[0, 1, 2, 3].map(i => <SearchResultSkeleton key={i} />)}
                                 </AfterDelay>
@@ -151,19 +166,20 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                         )}
 
                         {results.length > 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                            <div data-thread-list="" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                                 {results.map(email => (
                                     <div
                                         key={email.id}
+                                        data-thread-card=""
                                         onClick={() => {
                                             onSelectEmail(email, 'search');
                                             onClose();
                                         }}
                                         style={{
-                                            padding: 'var(--card-pad)',
-                                            backgroundColor: 'var(--surface-card)',
-                                            borderRadius: 'var(--radius-md)',
-                                            border: '1px solid var(--color-border)',
+                                            padding: 'var(--card-padding)',
+                                            backgroundColor: 'var(--surface-1)',
+                                            borderRadius: 'var(--radius-3)',
+                                            border: '1px solid var(--line-1)',
                                             cursor: 'pointer',
                                             display: 'flex',
                                             justifyContent: 'space-between',
@@ -171,12 +187,14 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                                         }}
                                     >
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 'var(--weight-semibold)', marginBottom: '4px' }}>{email.subject}</div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: '4px' }}>
+                                            <div style={{ fontWeight: 'var(--weight-medium)', marginBottom: 'var(--space-1)' }}>
+                                                <ThreadLink threadId={email.threadId} onOpen={() => { onSelectEmail(email, 'search'); onClose(); }}>{email.subject}</ThreadLink>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
                                                 <span
                                                     className="text-muted"
                                                     style={{
-                                                        fontSize: 'var(--font-size-sm)',
+                                                        fontSize: 'var(--size-body)',
                                                         cursor: email.senderAddress ? 'pointer' : 'default'
                                                     }}
                                                     onClick={(e) => {
@@ -192,32 +210,32 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                                                     {showSenderEmailMap[email.id] && email.senderAddress ? email.senderAddress : email.sender}
                                                 </span>
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
                                                 {email.locationLabel === 'Archive' ? (
-                                                    <Archive size={14} color="var(--color-text-muted)" />
+                                                    <Archive size={14} color="var(--text-3)" />
                                                 ) : email.location === folders.inbox ? (
-                                                    <Inbox size={14} color="var(--color-text-muted)" />
+                                                    <Inbox size={14} color="var(--text-3)" />
                                                 ) : email.locationLabel === 'Sent' ? (
-                                                    <Send size={14} color="var(--color-text-muted)" />
+                                                    <Send size={14} color="var(--text-3)" />
                                                 ) : (() => {
                                                     // A bucket: its icon, or its emoji until it has one (a bare first letter would repeat the name)
                                                     const bucket = buckets.find(b => b.id === email.location);
                                                     return bucket?.emoji ? (
-                                                        <span style={{ display: 'inline-flex', color: 'var(--color-text-muted)' }}>
-                                                            <BucketGlyph stored={bucket.emoji} label={bucket.label} size={14} fallbackStyle={{ fontSize: '12px', lineHeight: 1, filter: 'grayscale(1)', opacity: 0.55 }} />
+                                                        <span style={{ display: 'inline-flex', color: 'var(--text-3)' }}>
+                                                            <BucketGlyph stored={bucket.emoji} label={bucket.label} size={14} fallbackStyle={{ fontSize: 'var(--size-caption)', lineHeight: 1, filter: 'grayscale(1)', opacity: 0.55 }} />
                                                         </span>
                                                     ) : null;
                                                 })()}
                                                 <span style={{
-                                                    fontSize: 'var(--font-size-xs)',
-                                                    color: 'var(--color-text-muted)',
+                                                    fontSize: 'var(--size-caption)',
+                                                    color: 'var(--text-3)',
                                                     fontWeight: 500
                                                 }}>
                                                     {email.locationLabel}
                                                 </span>
                                             </div>
                                         </div>
-                                        <span className="text-muted" style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-faint)', fontVariantNumeric: 'var(--date-numerals)' }}>
+                                        <span className="text-muted" style={{ fontSize: 'var(--size-body)', color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
                                             {formatListDate(email.date)}
                                         </span>
                                     </div>
@@ -225,14 +243,14 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                             </div>
                         ) : (
                             query && page && page.q === query.trim() && !error && (
-                                <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', marginTop: 'var(--space-3xl)' }}>
-                                    No results found for "{query}"
+                                <div style={{ textAlign: 'center', color: 'var(--text-3)', marginTop: 'var(--space-16)' }}>
+                                    Nothing matches “{query}”
                                 </div>
                             )
                         )}
 
                         {!query && (
-                            <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', marginTop: 'var(--space-3xl)' }}>
+                            <div style={{ textAlign: 'center', color: 'var(--text-3)', marginTop: 'var(--space-16)' }}>
                                 Type to search across inbox, buckets, and archive
                             </div>
                         )}

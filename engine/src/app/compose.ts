@@ -153,14 +153,17 @@ export function threadingFromHeaders(inReplyTo: unknown, references: unknown): {
     return { inReplyTo: parent, references: refs };
 }
 
-/** "Re: " once, however many times the subject was already replied to. */
+/** "Re: " once, however many times the subject was already replied to; with no subject, "Re:" alone. */
 export function replySubject(subject: string | null): string {
     const s = (subject ?? '').trim();
+    if (!s) return 'Re:';
     return /^re:/i.test(s) ? s : `Re: ${s}`;
 }
 
+/** "Fwd: " once; with no subject, "Fwd:" alone. */
 export function forwardSubject(subject: string | null): string {
     const s = (subject ?? '').trim();
+    if (!s) return 'Fwd:';
     return /^(fwd?|fw):/i.test(s) ? s : `Fwd: ${s}`;
 }
 

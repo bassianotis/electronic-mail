@@ -4,11 +4,12 @@
  */
 import React, { useRef, useState } from 'react';
 import { Check, Download } from 'lucide-react';
-import { api, errorText, urls } from '../../api/client';
+import { api, ApiError, couldnt, urls } from '../../api/client';
 import type { ImportSummary } from '../../api/types';
 import { useMail } from '../../context/MailContext';
+import { Button } from '../../ui/Button';
+import { Note } from '../../ui/Note';
 import { Problem } from './parts';
-import { sentence } from './useSettings';
 
 const NOT_A_FILE = "This isn't a Mail settings file";
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -43,8 +44,9 @@ export const BackupSection: React.FC = () => {
             const { summary } = await api.post<{ summary: ImportSummary }>('/settings/import', content);
             setResult(summary);
         } catch (err) {
-            const text = errorText(err);
-            setProblem(/not an Electronic Mail settings file/i.test(text) ? NOT_A_FILE : `Couldn't restore it: ${sentence(text)}`);
+            // The engine's own words say which
+            const notOurs = err instanceof ApiError && /not an Electronic Mail settings file/i.test(err.message);
+            setProblem(notOurs ? NOT_A_FILE : couldnt('restore it', err));
         } finally {
             setRestoring(false);
         }
@@ -55,9 +57,7 @@ export const BackupSection: React.FC = () => {
             <div className="st-section">
                 <h4>Save a copy</h4>
                 <p>Names, tab names, signatures, sorting rules, how buckets look and the Inbox setting, for every account. No mail and no passwords.</p>
-                <button type="button" className="st-btn" onClick={() => download(urls.exportSettings, 'electronic-mail-settings.json')}>
-                    <Download size={16} aria-hidden="true" />Download settings file
-                </button>
+                <Button icon={<Download size={16} aria-hidden="true" />} onClick={() => download(urls.exportSettings, 'electronic-mail-settings.json')}>Download settings file</Button>
             </div>
             <div className="st-section">
                 <h4>Restore from a file</h4>
@@ -68,16 +68,13 @@ export const BackupSection: React.FC = () => {
                         e.target.value = ''; // the same file can be chosen again
                         if (file) void restore(file);
                     }} />
-                <button type="button" className="st-btn" onClick={() => picker.current?.click()} disabled={restoring}>
-                    {restoring ? 'Restoring…' : 'Choose a file…'}
-                </button>
+                <Button onClick={() => picker.current?.click()} working={restoring && 'Restoring…'}>Choose a file…</Button>
                 {problem && <Problem>{problem}</Problem>}
                 {result && (
-                    <div className="st-box" role="status" style={{ marginTop: 12 }}>
-                        <span className="st-good"><Check size={16} aria-hidden="true" /></span>
-                        <span style={{ flex: 1 }}>{restoredText(result)}</span>
-                        <button type="button" className="st-text" style={{ flexShrink: 0 }} onClick={() => window.location.reload()}>Reload now</button>
-                    </div>
+                    <Note role="status" style={{ marginTop: 'var(--space-3)' }} icon={<Check size={16} aria-hidden="true" className="is-good" />}
+                        action={<Button kind="quiet" size="sm" onClick={() => window.location.reload()}>Reload now</Button>}>
+                        {restoredText(result)}
+                    </Note>
                 )}
             </div>
         </>

@@ -23,6 +23,18 @@ export const BUCKET_ICONS: readonly (readonly [string, LucideIcon])[] = [
 ];
 const BY_NAME = new Map(BUCKET_ICONS);
 
+/** Each icon's name in words (rule K4), for its button and tooltip in the picker: never a lucide id. */
+export const ICON_WORDS: Record<string, string> = {
+    'inbox': 'Inbox tray', 'calendar': 'Calendar', 'square-check': 'Check box', 'ban': 'No entry',
+    'book-open': 'Open book', 'receipt': 'Receipt', 'reply': 'Reply arrow', 'hourglass': 'Hourglass',
+    'star': 'Star', 'heart': 'Heart', 'house': 'House', 'briefcase': 'Briefcase',
+    'map-pin': 'Map pin', 'shopping-bag': 'Shopping bag', 'credit-card': 'Credit card', 'music': 'Music note',
+    'camera': 'Camera', 'file-text': 'Document', 'folder': 'Folder', 'bookmark': 'Bookmark',
+    'tag': 'Tag', 'bell': 'Bell', 'clock': 'Clock', 'users': 'People',
+    'mail': 'Envelope', 'flag': 'Flag', 'globe': 'Globe', 'coffee': 'Coffee cup',
+    'graduation-cap': 'Graduation cap', 'leaf': 'Leaf', 'newspaper': 'Newspaper', 'wrench': 'Wrench',
+};
+
 /** Emoji with an obvious icon (variation selectors stripped first). */
 const FROM_EMOJI: Record<string, string> = {
     '📆': 'calendar', '☑': 'square-check', '🚫': 'ban', '📖': 'book-open', '🧾': 'receipt',

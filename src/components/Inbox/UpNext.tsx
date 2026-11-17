@@ -8,6 +8,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
+import { Tooltip } from '../../ui/Tooltip';
 import { useMail } from '../../context/MailContext';
 import { useComposer } from '../../context/ComposerContext';
 import { useDragDropActions } from '../../context/DragDropContext';
@@ -23,14 +24,15 @@ import type { UpNextDraft, UpNextItem, UpNextThread } from '../../hooks/useUpNex
 import type { Email } from '../../store/mailStore';
 import { formatCount } from '../../utils/format';
 import { useServerUnreachable } from '../../api/reachability';
+import { focusNextBeforeLeaving, Z } from '../../utils/layers';
 
 const pill: React.CSSProperties = {
-    backgroundColor: 'var(--tag-bg)',
-    border: '1px solid var(--tag-border)',
-    color: 'var(--tag-text)',
-    fontSize: 'var(--font-size-2xs)',
-    fontWeight: 'var(--weight-semibold)',
-    padding: 'var(--tag-pad)',
+    backgroundColor: 'transparent',
+    border: '1px solid transparent',
+    color: 'var(--text-4)',
+    fontSize: 'var(--size-caption)',
+    fontWeight: 'var(--weight-medium)',
+    padding: '0',
     borderRadius: 'var(--radius-full)',
     fontVariantNumeric: 'tabular-nums',
 };
@@ -42,25 +44,25 @@ const cardStyle: React.CSSProperties = {
     position: 'relative',
     height: '100%',
     boxSizing: 'border-box',
-    backgroundColor: 'var(--surface-card)',
-    border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-md)',
-    boxShadow: 'var(--shadow-sm)',
+    backgroundColor: 'var(--surface-1)',
+    border: '1px solid var(--line-1)',
+    borderRadius: 'var(--radius-3)',
+    boxShadow: 'none',
 };
 
 // The whole card is one button (Enter opens it); the quick Archive sits on top of it.
 const openStyle: React.CSSProperties = {
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px',
+    gap: 'var(--space-2)',
     width: '100%',
     height: '100%',
     minWidth: 0,
     boxSizing: 'border-box',
-    padding: '12px 16px',
+    padding: 'var(--space-3) var(--space-4)',
     background: 'none',
     border: 'none',
-    borderRadius: 'var(--radius-md)',
+    borderRadius: 'var(--radius-3)',
     textAlign: 'left',
     font: 'inherit',
     color: 'inherit',
@@ -75,11 +77,11 @@ const Subject = ({ text }: { text: string | null }) => (
         overflow: 'hidden',
         width: '100%',
         boxSizing: 'border-box',
-        paddingRight: '24px', // clears the Archive button
-        fontSize: 'var(--size-upnext-title)',
-        fontWeight: 'var(--weight-semibold)',
+        paddingRight: 'var(--space-6)', // clears the Archive button
+        fontSize: 'var(--size-body)',
+        fontWeight: 'var(--weight-medium)',
         lineHeight: 1.35,
-        color: text ? 'var(--color-text-main)' : 'var(--color-text-muted)',
+        color: text ? 'var(--text-1)' : 'var(--text-3)',
     }}>
         {text || 'No subject'}
     </span>
@@ -90,22 +92,22 @@ const Meta = ({ who, count, date }: { who: string | null; count: number; date: s
         marginTop: 'auto',
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
+        gap: 'var(--space-2)',
         width: '100%',
         minWidth: 0,
         whiteSpace: 'nowrap',
-        fontSize: 'var(--font-size-xs)',
-        color: 'var(--color-text-muted)',
+        fontSize: 'var(--size-caption)',
+        color: 'var(--text-3)',
     }}>
         {who && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{who}</span>}
         {count > 1 && (
             <span style={{
                 flexShrink: 0,
-                backgroundColor: 'var(--thread-badge)',
-                color: 'var(--thread-badge-text)',
-                fontSize: 'var(--font-size-2xs)',
-                fontWeight: 'var(--weight-semibold)',
-                padding: 'var(--thread-badge-pad)',
+                backgroundColor: 'transparent',
+                color: 'var(--text-4)',
+                fontSize: 'var(--size-caption)',
+                fontWeight: 'var(--weight-medium)',
+                padding: '0',
                 borderRadius: 'var(--radius-full)',
                 minWidth: '20px',
                 textAlign: 'center',
@@ -114,7 +116,7 @@ const Meta = ({ who, count, date }: { who: string | null; count: number; date: s
                 {formatCount(count)}
             </span>
         )}
-        {date && <span style={{ flexShrink: 0, color: 'var(--color-text-faint)', fontVariantNumeric: 'var(--date-numerals)' }}>{formatListDate(new Date(date))}</span>}
+        {date && <span style={{ flexShrink: 0, color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>{formatListDate(new Date(date))}</span>}
     </span>
 );
 
@@ -125,7 +127,7 @@ const ThreadCardItem: React.FC<{ item: UpNextThread; bucketIds: string[]; onOpen
     const slotRef = useRef<HTMLDivElement>(null);
     const dragged = useRef(false);
     const t = item.thread;
-    const look = useDragLook(slotRef, 0.4);
+    const look = useDragLook(slotRef);
     // While away from its slot (dragged, going home, fading where it was dropped), the card is held
     // where it was with position: fixed, so the strip's scrolling box doesn't clip it on its way to
     // the dock; its slot keeps the space.
@@ -164,41 +166,43 @@ const ThreadCardItem: React.FC<{ item: UpNextThread; bucketIds: string[]; onOpen
                 style={{
                     ...cardStyle,
                     cursor: 'grab',
-                    transformOrigin: look.origin,
+                    originX: look.originX,
+                    originY: look.originY,
                     x: look.x,
                     y: look.y,
-                    ...(lifted ? { position: 'fixed', top: lifted.top, left: lifted.left, width: lifted.width, height: lifted.height, zIndex: 9999 } : {}),
+                    ...(lifted ? { position: 'fixed', top: lifted.top, left: lifted.left, width: lifted.width, height: lifted.height, zIndex: Z.drag.card } : {}),
                 }}
             >
-                <button type="button" onClick={() => { if (!dragged.current) onOpen(); }} style={openStyle}>
+                <button type="button" data-thread-link="" onClick={() => { if (!dragged.current) onOpen(); }} style={openStyle}>
                     <span style={{ ...pill, alignSelf: 'flex-start' }}>{item.bucket.label}</span>
                     <Subject text={t.subject} />
                     <Meta who={t.fromName || t.fromAddr || 'Unknown'} count={t.messageCount} date={t.latestDate} />
                 </button>
-                <button
-                    type="button"
-                    className="upnext-archive"
-                    aria-label="Archive"
-                    title="Archive"
-                    onClick={() => onMove('archive')}
-                    style={{
-                        position: 'absolute',
-                        top: '8px',
-                        right: '8px',
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: 'var(--archive-button-bg)',
-                        color: 'var(--quick-archive-icon)',
-                        border: 'var(--archive-button-border)',
-                        boxShadow: 'var(--shadow-sm)',
-                    }}
-                >
-                    <Check size={16} />
-                </button>
+                <Tooltip content="Archive">
+                    <button
+                        type="button"
+                        className="upnext-archive"
+                        aria-label="Archive"
+                        onClick={() => { focusNextBeforeLeaving(slotRef.current); onMove('archive'); }} // rule K7
+                        style={{
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: 'var(--radius-full)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: 'var(--surface-raised)',
+                            color: 'var(--success)',
+                            border: '1px solid var(--line-2)',
+                            boxShadow: 'none',
+                        }}
+                    >
+                        <Check size={16} />
+                    </button>
+                </Tooltip>
             </motion.div>
         </div>
     );
@@ -211,8 +215,8 @@ const DraftCardItem: React.FC<{ item: UpNextDraft; me: string; recent: boolean; 
     const to = d.recipients.find(a => a !== me) ?? d.recipients[0];
     return (
         <div style={slotStyle}>
-            <div style={recent ? { ...cardStyle, border: '1px solid var(--draft-ring-border)', boxShadow: 'var(--draft-ring)' } : cardStyle}>
-                <button type="button" onClick={onOpen} style={{ ...openStyle, cursor: 'pointer' }}>
+            <div style={recent ? { ...cardStyle, border: '1px solid var(--action)', boxShadow: 'none' } : cardStyle}>
+                <button type="button" data-thread-link="" onClick={onOpen} style={{ ...openStyle, cursor: 'pointer' }}>
                     <span style={{ alignSelf: 'flex-start' }}><DraftBadge /></span>
                     <Subject text={d.subject} />
                     <Meta who={to ? `To: ${to}` : null} count={0} date={d.date} />
@@ -263,20 +267,18 @@ export const UpNext: React.FC<UpNextProps> = ({ items, onSelectEmail, onOpenDraf
 
     return (
         <section aria-label="Up next" style={{ marginBottom: '36px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                 <h2 style={{
                     margin: 0,
-                    fontSize: 'var(--font-size-sm)',
-                    fontWeight: 'var(--weight-semibold)',
-                    textTransform: 'var(--label-case)' as React.CSSProperties['textTransform'],
-                    letterSpacing: 'var(--label-tracking)',
-                    color: 'var(--color-text-muted)'
+                    fontSize: 'var(--size-body)',
+                    fontWeight: 'var(--weight-medium)',
+                    color: 'var(--text-3)'
                 }}>
                     Up next
                 </h2>
                 <span style={pill}>{formatCount(shown.length)}</span>
             </div>
-            <div className="upnext-row" style={{ display: 'flex', gap: '12px', overflowX: 'auto', scrollSnapType: 'x mandatory', padding: '2px 2px 8px', margin: '0 -2px' }}>
+            <div className="upnext-row" data-thread-list="" style={{ display: 'flex', gap: 'var(--space-3)', overflowX: 'auto', scrollSnapType: 'x mandatory', padding: '2px 2px var(--space-2)', margin: '0 -2px' }}>
                 {shown.map(item => item.kind === 'thread' ? (
                     <ThreadCardItem
                         key={item.key}

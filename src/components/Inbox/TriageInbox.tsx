@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle } from 'lucide-react';
 import { InboxItem } from './InboxItem';
 import { UpNext } from './UpNext';
 import { type Email } from '../../store/mailStore';
@@ -11,12 +10,12 @@ import { useThreadList } from '../../hooks/useThreadList';
 import { cardFromThread } from '../../utils/emailMapper';
 import type { DraftSummary } from '../../api/types';
 import { useArrivals } from '../../hooks/useArrivals';
-import { AfterDelay, Bone, InboxCardSkeleton } from '../Loading/Skeletons';
+import { AfterDelay, Bone, InboxCardSkeleton, ViewFailure } from '../Loading/Skeletons';
 import { useUpNext } from '../../hooks/useUpNext';
 import { usePublishList, type ListKey } from '../../hooks/conversationLists';
 import { watchForMoves } from '../../utils/pointer';
 import { useDragDrop } from '../../context/DragDropContext';
-import { DURATION, tween } from '../../utils/motion';
+import { DURATION, leave, tween } from '../../utils/motion';
 import { LoadMore } from '../Loading/LoadMore';
 import { formatTimeAgo } from '../../utils/formatDate';
 import { formatCount } from '../../utils/format';
@@ -121,8 +120,8 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
     // card or a heading whose last card went, fades where it is while everything below slides up
     // as one, at 200ms: as in buckets (motion-audit.md, L8)
     const sections: [string, Email[]][] = [
-        ['Today', segments.today], ['Yesterday', segments.yesterday], ['Past Week', segments.pastWeek],
-        ['Last Week', segments.lastWeek], ['Earlier', segments.earlier],
+        ['Today', segments.today], ['Yesterday', segments.yesterday], ['Past week', segments.pastWeek],
+        ['Last week', segments.lastWeek], ['Earlier', segments.earlier], // sentence case (rule W1)
     ];
     const listItems = sections.flatMap(([title, items]) => (items.length === 0 ? [] : [
         <motion.h3
@@ -130,15 +129,13 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
             layout={isDragging ? false : 'position'}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            exit={{ opacity: 0, transition: leave(DURATION.mid) }}
             transition={tween(DURATION.mid)}
             className="text-muted"
             style={{
-                fontSize: 'var(--font-size-sm)',
-                fontWeight: 'var(--weight-semibold)',
-                textTransform: 'var(--label-case)' as React.CSSProperties['textTransform'],
-                letterSpacing: 'var(--label-tracking)',
-                margin: 'var(--space-lg) 0 var(--space-md)'
+                fontSize: 'var(--size-body)',
+                fontWeight: 'var(--weight-medium)',
+                margin: 'var(--space-6) 0 var(--space-4)'
             }}
         >
             {title}
@@ -146,7 +143,7 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
         // Each card in a wrapper the list moves: it slides up into a gap and, leaving, fades and
         // shrinks a little where it is, as in buckets (framer moves only the list's own children)
         ...items.map(email => (
-            <motion.div key={email.id} layout={isDragging ? false : 'position'} exit={{ opacity: 0, scale: 0.97 }} transition={tween(DURATION.mid)}>
+            <motion.div key={email.id} layout={isDragging ? false : 'position'} exit={{ opacity: 0, scale: 0.97, transition: leave(DURATION.mid) }} transition={tween(DURATION.mid)}>
             <InboxItem
                 email={email}
                 isExpanded={expandedEmailId === email.id}
@@ -163,43 +160,43 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
     ]));
 
     return (
-        <div ref={listRef} style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-xl)', paddingBottom: '140px' }}>
+        <div ref={listRef} style={{ maxWidth: '800px', margin: '0 auto', paddingTop: 'var(--space-8)', paddingBottom: '140px' }}>
             {!ready ? (
                 // Waiting for both: blank, then (if the wait is noticeable) the heading and card skeletons
                 <div aria-busy="true">
                     <AfterDelay>
-                        <Bone w={110} h={28} r="var(--radius-sm)" style={{ marginBottom: 'var(--space-lg)' }} />
+                        <Bone w={110} h={28} r="var(--radius-2)" style={{ marginBottom: 'var(--space-6)' }} />
                         {[0, 1, 2, 3].map(i => <InboxCardSkeleton key={i} />)}
                     </AfterDelay>
                 </div>
             ) : (<>
             <UpNext items={upNext.items} onSelectEmail={onSelectEmail} onOpenDraft={onOpenDraft} />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-6)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
                     <h2 style={{
-                        fontSize: 'var(--size-page-heading)',
-                        fontWeight: 'var(--weight-bold)',
-                        color: 'var(--color-text-main)'
+                        fontSize: 'var(--size-page)',
+                        fontWeight: 'var(--weight-medium)',
+                        color: 'var(--text-1)'
                     }}>
                         Inbox
                     </h2>
                     {firstSync && (
-                        <span role="status" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
+                        <span role="status" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--size-body)', color: 'var(--text-3)' }}>
                             <span aria-hidden="true" className="sync-dot" />
                             {lastSyncAt ? `Syncing… last synced ${formatTimeAgo(lastSyncAt, new Date())}` : 'Syncing…'}
                         </span>
                     )}
                 </div>
-                <span className="text-muted" style={{ fontWeight: 500, color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
+                <span className="text-muted" style={{ fontWeight: 500, color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
                     {formatCount(list.count)} {list.count === 1 ? 'thread' : 'threads'}
                 </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
                 {/* Each heading's top margin is the gap between headings (the first one's is taken back
                     here); a column, so a card's margin and the next heading's add up as before */}
-                <div style={{ marginTop: 'calc(-1 * var(--space-lg))', display: 'flex', flexDirection: 'column' }}>
+                <div data-thread-list="" style={{ marginTop: 'calc(-1 * var(--space-6))', display: 'flex', flexDirection: 'column' }}>
                     <AnimatePresence mode="popLayout" initial={false}>
                         {listItems}
                     </AnimatePresence>
@@ -223,23 +220,19 @@ export const TriageInbox: React.FC<TriageInboxProps> = ({ onSelectEmail, onOpenD
                         animate={{ opacity: 1 }}
                         style={{
                             textAlign: 'center',
-                            padding: 'var(--space-3xl)',
-                            color: 'var(--color-text-muted)',
+                            padding: 'var(--space-16)',
+                            color: 'var(--text-3)',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            gap: '16px'
+                            gap: 'var(--space-4)'
                         }}
                     >
                         {list.error ? (
-                            <>
-                                <AlertCircle size={24} aria-hidden="true" style={{ color: 'var(--color-text-faint)' }} />
-                                <p>Couldn't load your inbox: {list.error}</p>
-                            </>
+                            <ViewFailure what="the Inbox" why={list.error} onRetry={list.retry} room="0" />
                         ) : (
-                            <>
-                                <p>All caught up</p>
-                            </>
+                            // One line where the list would be (board P7, change 3; rule T5)
+                            <p>Nothing in the Inbox.</p>
                         )}
                     </motion.div>
 

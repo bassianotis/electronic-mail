@@ -49,28 +49,28 @@ export const ThreadTree: React.FC<ThreadTreeProps> = ({ messages, currentKey, on
 
     return (
         <nav
-            aria-label="Messages in this conversation"
+            aria-label="Messages in this thread"
             style={{
                 width: '300px',
                 flexShrink: 0,
                 display: 'flex',
                 flexDirection: 'column',
                 boxSizing: 'border-box',
-                padding: '10px 8px',
+                padding: '10px var(--space-2)',
                 background: 'var(--surface-raised)',
-                border: '1px solid var(--border-strong)',
-                borderRadius: '8px',
+                border: '1px solid var(--line-2)',
+                borderRadius: 'var(--radius-3)',
                 pointerEvents: 'auto',
                 minHeight: 0,
             }}
         >
-            <div style={{ padding: '6px 10px 10px', fontSize: '12px', fontWeight: 500, color: 'var(--color-text-faint)', flexShrink: 0 }}>
+            <div style={{ padding: '6px 10px 10px', fontSize: 'var(--size-caption)', fontWeight: 500, color: 'var(--text-4)', flexShrink: 0 }}>
                 {loading ? `${loading} messages` : `${messages.length} messages · ${people} ${people === 1 ? 'person' : 'people'}`}
             </div>
             {loading > 0 && (
                 <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column' }}>
                     {Array.from({ length: Math.min(loading, 12) }, (_, i) => (
-                        <div key={i} style={{ padding: '9px 10px 9px 12px', display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                        <div key={i} style={{ padding: '9px 10px 9px var(--space-3)', display: 'flex', flexDirection: 'column', gap: '7px' }}>
                             <Bone w={i % 3 === 0 ? 110 : 90} h={11} r="4px" />
                             <Bone w={i % 2 ? 200 : 230} h={10} r="4px" />
                         </div>
@@ -108,20 +108,20 @@ export const ThreadTree: React.FC<ThreadTreeProps> = ({ messages, currentKey, on
                             style={{ paddingLeft: `${X0 + depth * INDENT}px` }}
                         >
                             {lines.map((style, i) => (
-                                <span key={i} aria-hidden="true" style={{ position: 'absolute', background: 'var(--tree-guide)', ...style }} />
+                                <span key={i} aria-hidden="true" style={{ position: 'absolute', background: 'var(--line-3)', ...style }} />
                             ))}
-                            <span style={{ display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '13px' }}>
+                            <span style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)', fontSize: 'var(--size-small)' }}>
                                 <b style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {isDraft ? 'Me' : name(email!)}
                                 </b>
-                                {isDraft && <span style={{ color: 'var(--color-action)', fontSize: '10px', fontWeight: 500 }}>Draft</span>}
+                                {isDraft && <span style={{ color: 'var(--action)', fontSize: 'var(--size-caption)', fontWeight: 500 }}>Draft</span>}
                                 {email && (
-                                    <span style={{ marginLeft: 'auto', color: 'var(--color-text-faint)', fontSize: '12px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                                    <span style={{ marginLeft: 'auto', color: 'var(--text-4)', fontSize: 'var(--size-caption)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                         {formatListDate(email.date)}
                                     </span>
                                 )}
                             </span>
-                            <span style={{ display: 'block', fontSize: '12.5px', color: 'var(--color-text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <span style={{ display: 'block', fontSize: 'var(--size-caption)', color: 'var(--text-4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {isDraft ? firstLine(draft?.text ?? '') || ' ' : firstLine(email!.preview) || ' '}
                             </span>
                         </button>

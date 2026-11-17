@@ -5,14 +5,14 @@ export const fieldRow: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: '8px',
+    gap: 'var(--space-2)',
     minHeight: '40px',
-    padding: '4px 0',
-    borderBottom: '1px solid var(--color-border)'
+    padding: 'var(--space-1) 0',
+    borderBottom: '1px solid var(--line-1)'
 };
 
 export const fieldLabel: React.CSSProperties = {
     flex: '0 0 60px',
-    color: 'var(--color-text-muted)',
-    fontSize: 'var(--font-size-sm)'
+    color: 'var(--text-3)',
+    fontSize: 'var(--size-body)'
 };

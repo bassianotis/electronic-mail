@@ -2,13 +2,14 @@
  * The design playground (?playground in the address): a floating panel of live controls that write
  * CSS variables on this page only, to try values before they're decided. Nothing is saved: Reset or a
  * reload puts everything back. App.tsx loads it (and IBM Plex Sans and Source Sans 3 with it) only with the flag.
- * Easing sets --ease, the one curve every CSS transition uses; the framer-motion animations keep theirs
+ * Easing sets --ease-in, the one curve every CSS transition uses; the framer-motion animations keep theirs
  * (utils/motion.ts).
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/ibm-plex-sans';
 import '@fontsource-variable/source-sans-3';
+import { Z } from '../utils/layers';
 
 type Kind = 'colour' | 'px' | 'select';
 interface Control {
@@ -40,19 +41,19 @@ const EASINGS: [string, string][] = [
     ['linear', 'linear'],
 ];
 const CONTROLS: Control[] = [
-    { group: 'Surfaces', key: 'page', label: 'Page', kind: 'colour', vars: ['--color-bg'] },
-    { group: 'Surfaces', key: 'card', label: 'Card', kind: 'colour', vars: ['--surface-card'] },
+    { group: 'Surfaces', key: 'page', label: 'Page', kind: 'colour', vars: ['--bg-page'] },
+    { group: 'Surfaces', key: 'card', label: 'Card', kind: 'colour', vars: ['--surface-1'] },
     { group: 'Surfaces', key: 'raised', label: 'Raised', kind: 'colour', vars: ['--surface-raised'] },
-    { group: 'Text', key: 'text', label: 'Primary', kind: 'colour', vars: ['--color-text-main'] },
-    { group: 'Text', key: 'muted', label: 'Secondary', kind: 'colour', vars: ['--color-text-muted'] },
-    { group: 'Text', key: 'faint', label: 'Faint', kind: 'colour', vars: ['--color-text-faint'] },
-    { group: 'Accent', key: 'accent', label: 'Accent', kind: 'colour', vars: ['--color-action'] },
-    { group: 'Shape', key: 'cardRadius', label: 'Card radius', kind: 'px', min: 0, max: 24, vars: ['--radius-md'] },
-    { group: 'Shape', key: 'controlRadius', label: 'Control radius', kind: 'px', min: 0, max: 16, vars: ['--radius-control', '--radius-sm'], darkVars: ['--radius-pill'] },
-    { group: 'Shape', key: 'cardPad', label: 'Card padding', kind: 'px', min: 8, max: 40, vars: ['--card-pad'] },
-    { group: 'Type', key: 'font', label: 'Font', kind: 'select', vars: ['--font-family'], options: FONTS },
+    { group: 'Text', key: 'text', label: 'Primary', kind: 'colour', vars: ['--text-1'] },
+    { group: 'Text', key: 'muted', label: 'Secondary', kind: 'colour', vars: ['--text-3'] },
+    { group: 'Text', key: 'faint', label: 'Faint', kind: 'colour', vars: ['--text-4'] },
+    { group: 'Accent', key: 'accent', label: 'Accent', kind: 'colour', vars: ['--action'] },
+    { group: 'Shape', key: 'cardRadius', label: 'Card radius', kind: 'px', min: 0, max: 24, vars: ['--radius-3'] },
+    { group: 'Shape', key: 'controlRadius', label: 'Control radius', kind: 'px', min: 0, max: 16, vars: ['--radius-2'] },
+    { group: 'Shape', key: 'cardPad', label: 'Card padding', kind: 'px', min: 8, max: 40, vars: ['--card-padding'] },
+    { group: 'Type', key: 'font', label: 'Font', kind: 'select', vars: ['--font-ui'], options: FONTS },
     { group: 'Type', key: 'base', label: 'Base text size', kind: 'px', min: 12, max: 20, vars: ['--base-size'] },
-    { group: 'Motion', key: 'ease', label: 'Easing', kind: 'select', vars: ['--ease'], options: EASINGS },
+    { group: 'Motion', key: 'ease', label: 'Easing', kind: 'select', vars: ['--ease-in'], options: EASINGS },
 ];
 
 const root = () => document.documentElement;
@@ -78,10 +79,10 @@ function readPx(name: string): number {
     return Math.round(px);
 }
 
-/** Which of the three the page uses now: the bundled faces by their "Variable" names (the System
- * default names 'Inter' first, which isn't installed, so the system font shows). */
+/** Which of the three the page uses now: the bundled faces by their "Variable" names, else System
+ * (--font-ui is the system stack, unless the design trials, ?trials, set another). */
 function readFont(): string {
-    const family = getComputedStyle(root()).getPropertyValue('--font-family');
+    const family = getComputedStyle(root()).getPropertyValue('--font-ui');
     return FONTS.find(([value, label]) => label !== 'System' && family.includes(value.split(',')[0].replace(/'/g, '')))?.[0] ?? SYSTEM;
 }
 
@@ -133,7 +134,7 @@ export default function Playground() {
     const copy = () => {
         const lines = CONTROLS.filter(c => changed[c.key] !== undefined && changed[c.key] !== defaults[c.key]).flatMap(c =>
             c.key === 'ease'
-                ? changed.ease ? [`    /* one curve for every transition */`, `    --ease: ${changed.ease};`] : []
+                ? changed.ease ? [`    /* one curve for every transition */`, `    --ease-in: ${changed.ease};`] : []
                 : varsOf(c).map(v => `    ${v}: ${cssValue(c, changed[c.key])};`));
         const text = lines.length ? `/* Design playground */\n:root {\n${lines.join('\n')}\n}` : '/* Design playground: nothing changed */';
         setSnippet(text);
@@ -144,7 +145,7 @@ export default function Playground() {
     const groups = [...new Set(CONTROLS.map(c => c.group))];
 
     return (
-        <div role="dialog" aria-label="Design playground" style={panel}>
+        <div role="dialog" data-layer="panel" aria-label="Design playground" style={panel}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: open ? '8px' : 0 }}>
                 <strong style={{ fontSize: '12px', fontWeight: 600 }}>Design playground</strong>
                 <button type="button" onClick={() => setOpen(!open)} style={smallButton} aria-expanded={open}>{open ? 'Hide' : 'Show'}</button>
@@ -192,7 +193,7 @@ export default function Playground() {
 
 // Its own look, so it stays readable whatever the controls do to the app
 const panel: React.CSSProperties = {
-    position: 'fixed', top: '72px', right: '16px', zIndex: 10001, width: '300px', maxHeight: 'calc(100vh - 96px)', overflowY: 'auto',
+    position: 'fixed', top: '72px', right: '16px', zIndex: Z.panel.playground, width: '300px', maxHeight: 'calc(100vh - 96px)', overflowY: 'auto',
     boxSizing: 'border-box', padding: '12px', borderRadius: '10px', background: 'rgba(24, 25, 28, 0.97)', border: '1px solid rgba(255, 255, 255, 0.12)',
     boxShadow: '0 14px 40px rgba(0, 0, 0, 0.5)', color: '#e6e6e6', fontFamily: SYSTEM, fontSize: '12px', lineHeight: 1.3,
 };

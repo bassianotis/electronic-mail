@@ -15,15 +15,18 @@ import { urls } from '../../api/client';
 import { bodyHtml } from '../../utils/emailMapper';
 import { formatListDate } from '../../utils/formatDate';
 import { DraftBadge } from '../Views/DraftBadge';
+import { ThreadLink } from '../Views/ThreadLink';
 import { BodyFailure, BodySkeleton } from '../Loading/Skeletons';
 import { type Arrivals, useEntrance } from '../../hooks/useArrivals';
-import { DURATION, noNativeAnimation, tween } from '../../utils/motion';
+import { DURATION, leave, noNativeAnimation, tween } from '../../utils/motion';
 import { showsOnPaper, stripToTheme } from '../../utils/mailLook';
 import { splitQuotedContent } from '../../utils/quotes';
 import { useDragLook } from '../../hooks/useDragLook';
 import { inDockStrip } from '../../utils/dropTargets';
 import { formatCount, formatSize } from '../../utils/format';
 import { useServerUnreachable } from '../../api/reachability';
+import { focusNextBeforeLeaving, Z } from '../../utils/layers';
+import { Button } from '../../ui/Button';
 
 
 interface InboxItemProps {
@@ -42,6 +45,9 @@ interface InboxItemProps {
 
 export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucket, onDone, onClick, threadCount, onViewThread, hasDraft, arrivals }) => {
     const [isHovered, setIsHovered] = React.useState(false);
+    // Nothing only on hover (rule A5): keyboard focus in the card shows its Archive too
+    const [keyFocus, setKeyFocus] = React.useState(false);
+    const showArchive = isHovered || isExpanded || keyFocus;
     // A card that slid into place under a still cursor (the one above it archived) gets no "mouse
     // entered", so once it settles it checks for itself: Archive shows whenever the mouse is over it.
     const checkHover = useCallback(() => {
@@ -72,7 +78,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
     const attachments = body?.attachments ?? [];
     const enters = useEntrance(arrivals, email.id);
     // Mail arriving while you look slides up 20px into place (the hook moves it: its y is the drag's)
-    const look = useDragLook(itemRef, 0.4, enters ? 20 : 0);
+    const look = useDragLook(itemRef, enters ? 20 : 0);
 
     const dragControls = useDragControls();
 
@@ -94,8 +100,8 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
         return () => clearTimeout(timer);
     }, [resizing]);
 
-    // Track drag origin to shrink towards the mouse
-    const [dragOrigin, setDragOrigin] = useState('top center');
+    // Before the card is first grabbed: which end it scales from (the top, or the bottom over the reply)
+    const [restOriginY, setRestOriginY] = useState(0);
 
     // Toggle between sender name and email address
     const [showSenderEmail, setShowSenderEmail] = useState(false);
@@ -129,6 +135,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
 
     const handleArchive = (e: React.MouseEvent) => {
         e.stopPropagation();
+        focusNextBeforeLeaving(itemRef.current); // rule K7: the next card, not the page
         onDone(email.id);
     };
 
@@ -197,7 +204,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                 dropPoint.y >= rect.top &&
                 dropPoint.y <= rect.bottom
             ) {
-                void look.land('archive', () => onDone(email.id)); // Archive uses the same handler as Done
+                void look.land('archive', () => { focusNextBeforeLeaving(itemRef.current); onDone(email.id); }); // Archive uses the same handler as Done
                 setTimeout(() => {
                     isDraggingRef.current = false;
                 }, 100);
@@ -224,7 +231,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
         }
 
         const to = droppedBucketId;
-        void look.land(to, () => { if (to) onBucket(email.id, to); });
+        void look.land(to, () => { if (to) { focusNextBeforeLeaving(itemRef.current); onBucket(email.id, to); } });
 
         setTimeout(() => {
             isDraggingRef.current = false;
@@ -273,35 +280,39 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                 onUpdate={noNativeAnimation}
                 animate={look.animate({
                     opacity: 1,
-                    boxShadow: isExpanded ? 'var(--shadow-lg)' : (isHovered ? 'var(--shadow-md)' : 'var(--shadow-sm)')
+                    boxShadow: 'none'
                 })}
                 // Hover's shadow is quick; closing a gap matches the buckets' (200ms); opening a card takes its time
                 transition={{ default: tween(DURATION.slow), boxShadow: tween(DURATION.fast), layout: tween(resizing ? DURATION.slow : DURATION.mid) }}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
+                onFocus={e => setKeyFocus((e.target as HTMLElement).matches(':focus-visible'))}
+                onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setKeyFocus(false); }}
                 onLayoutAnimationComplete={checkHover}
                 onAnimationComplete={checkHover}
                 onClick={handleClick}
+                data-thread-card=""
                 style={{
                     position: 'relative',
-                    marginBottom: isExpanded ? 'var(--space-lg)' : 'var(--card-gap)',
-                    backgroundColor: 'var(--surface-card)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border)',
+                    marginBottom: isExpanded ? 'var(--space-6)' : 'var(--card-gap)',
+                    backgroundColor: 'var(--surface-1)',
+                    borderRadius: 'var(--radius-3)',
+                    border: '1px solid var(--line-1)',
                     cursor: isExpanded ? 'default' : 'grab',
                     overflow: 'hidden',
-                    transformOrigin: look.origin ?? dragOrigin,
+                    originX: look.originX ?? 0.5,
+                    originY: look.originY ?? restOriginY,
                     x: look.x,
                     y: look.y,
-                    zIndex: look.raised ? 9999 : undefined
+                    zIndex: look.raised ? Z.drag.card : undefined
                 }}
             >
                 <div
                     style={{
-                        padding: 'var(--card-pad)',
+                        padding: 'var(--card-padding)',
                         cursor: isExpanded ? 'grab' : 'inherit'
                     }}
-                    onPointerEnter={() => setDragOrigin('top center')}
+                    onPointerEnter={() => setRestOriginY(0)}
                     onPointerDown={(e) => {
                         if (isExpanded) {
                             // Allow text selection on selectable elements (email body, sender name)
@@ -318,21 +329,21 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                     {/* Dark (the Instrument trial): the meta line spans the card with its date on the right. On hover and
                         while the card is open, its Archive takes the date's spot (as mail apps put hover actions where the
                         date was), centred on that line, so it never moves when the card opens. */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-sm)', position: 'relative', gap: 'var(--space-md)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-2)', position: 'relative', gap: 'var(--space-4)' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <h3 style={{
-                                fontSize: 'var(--size-card-title)',
-                                fontWeight: 'var(--weight-semibold)',
-                                marginBottom: 'var(--space-xs)',
-                                color: 'var(--color-text-main)'
+                                fontSize: 'var(--size-title)',
+                                fontWeight: 'var(--weight-medium)',
+                                marginBottom: 'var(--space-1)',
+                                color: 'var(--text-1)'
                             }}>
-                                {email.subject}
+                                <ThreadLink threadId={email.threadId} onOpen={() => { if (!isDraggingRef.current) onClick(); }}>{email.subject}</ThreadLink>
                             </h3>
-                            <div style={{ display: 'flex', gap: 'var(--space-md)', color: 'var(--color-text-muted)', fontSize: 'var(--size-sender-line)', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: 'var(--space-4)', color: 'var(--text-3)', fontSize: 'var(--size-body)', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <span
                                     style={{
-                                        fontWeight: 'var(--weight-semibold)',
-                                        color: 'var(--sender-text)',
+                                        fontWeight: 'var(--weight-medium)',
+                                        color: 'var(--text-3)',
                                         cursor: 'text'
                                     }}
                                     onClick={(e) => {
@@ -352,11 +363,11 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                 {hasDraft && <DraftBadge />}
                                 {threadCount && threadCount > 1 && (
                                     <span style={{
-                                        backgroundColor: 'var(--thread-badge)',
-                                        color: 'var(--thread-badge-text)',
-                                        fontSize: 'var(--font-size-2xs)',
-                                        fontWeight: 'var(--weight-semibold)',
-                                        padding: 'var(--thread-badge-pad)',
+                                        backgroundColor: 'transparent',
+                                        color: 'var(--text-4)',
+                                        fontSize: 'var(--size-caption)',
+                                        fontWeight: 'var(--weight-medium)',
+                                        padding: '0',
                                         borderRadius: 'var(--radius-full)',
                                         minWidth: '20px',
                                         textAlign: 'center',
@@ -375,26 +386,26 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                         style={{
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '4px',
-                                            padding: '4px 12px',
-                                            borderRadius: 'var(--radius-pill)',
-                                            backgroundColor: 'var(--view-thread-bg)',
-                                            border: '1px solid var(--view-thread-border)',
-                                            color: 'var(--view-thread-text)',
-                                            fontSize: 'var(--font-size-xs)',
+                                            gap: 'var(--space-1)',
+                                            padding: 'var(--space-1) var(--space-3)',
+                                            borderRadius: 'var(--radius-2)',
+                                            backgroundColor: 'transparent',
+                                            border: '1px solid transparent',
+                                            color: 'var(--text-4)',
+                                            fontSize: 'var(--size-caption)',
                                             fontWeight: 500,
                                             cursor: 'pointer',
-                                            transition: 'background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)'
+                                            transition: 'background-color var(--dur-instant) var(--ease-in), color var(--dur-instant) var(--ease-in), border-color var(--dur-instant) var(--ease-in)'
                                         }}
                                         onMouseEnter={(e) => {
-                                            e.currentTarget.style.backgroundColor = 'var(--view-thread-hover-bg)';
-                                            e.currentTarget.style.color = 'var(--view-thread-hover-text)';
-                                            e.currentTarget.style.borderColor = 'var(--view-thread-hover-bg)';
+                                            e.currentTarget.style.backgroundColor = 'transparent';
+                                            e.currentTarget.style.color = 'var(--text-1)';
+                                            e.currentTarget.style.borderColor = 'transparent';
                                         }}
                                         onMouseLeave={(e) => {
-                                            e.currentTarget.style.backgroundColor = 'var(--view-thread-bg)';
-                                            e.currentTarget.style.color = 'var(--view-thread-text)';
-                                            e.currentTarget.style.borderColor = 'var(--view-thread-border)';
+                                            e.currentTarget.style.backgroundColor = 'transparent';
+                                            e.currentTarget.style.color = 'var(--text-4)';
+                                            e.currentTarget.style.borderColor = 'transparent';
                                         }}
                                     >
                                         <Layers size={14} />
@@ -404,41 +415,30 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                 {/* Archive sits in the date's spot, shown on hover or when open */}
                                     <span style={{ marginLeft: 'auto', position: 'relative', display: 'flex', alignItems: 'center' }}>
                                         <span style={{
-                                            fontSize: 'var(--size-date)',
-                                            color: 'var(--color-text-faint)',
-                                            fontVariantNumeric: 'var(--date-numerals)',
+                                            fontSize: '1em',
+                                            color: 'var(--text-4)',
+                                            fontVariantNumeric: 'tabular-nums',
                                             whiteSpace: 'nowrap',
-                                            opacity: isHovered || isExpanded ? 0 : 1,
-                                            transition: 'opacity var(--dur-fast) var(--ease)'
+                                            opacity: showArchive ? 0 : 1,
+                                            transition: 'opacity var(--dur-instant) var(--ease-in)'
                                         }}>{formatListDate(email.date)}</span>
+                                        {/* The shared Button's look (secondary, 28), faded in and out where the date is */}
                                         <motion.button
+                                            type="button"
+                                            className="ba-button ba-button--secondary ba-button--sm"
                                             initial={false}
-                                            animate={{ opacity: isHovered || isExpanded ? 1 : 0 }}
-                                            transition={tween(DURATION.fast)}
+                                            animate={{ opacity: showArchive ? 1 : 0 }}
+                                            transition={showArchive ? tween(DURATION.instant) : leave(DURATION.instant)}
                                             onClick={handleArchive}
-                                            whileTap={{ scale: 0.97, transition: tween(DURATION.fast) }}
                                             style={{
                                                 position: 'absolute',
                                                 right: 0,
                                                 top: '50%',
                                                 y: '-50%',
-                                                pointerEvents: isHovered || isExpanded ? 'auto' : 'none',
-                                                height: '28px',
-                                                padding: '0 12px',
-                                                borderRadius: 'var(--radius-control)',
-                                                backgroundColor: 'var(--archive-button-bg)',
-                                                color: 'var(--archive-button-text)',
-                                                border: 'var(--archive-button-border)',
-                                                fontSize: '13px',
-                                                fontWeight: 500,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                whiteSpace: 'nowrap',
-                                                cursor: 'pointer'
+                                                pointerEvents: showArchive ? 'auto' : 'none'
                                             }}
                                         >
-                                            <Check size={14} style={{ color: 'var(--archive-button-icon)' }} />
+                                            <Check size={14} aria-hidden="true" style={{ color: 'var(--success)' }} />
                                             Archive
                                         </motion.button>
                                     </span>
@@ -450,8 +450,8 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
 
                     {/* Body Content */}
                     <div style={{
-                        fontSize: 'var(--size-preview)',
-                        color: 'var(--color-text-faint)',
+                        fontSize: 'var(--size-body)',
+                        color: 'var(--text-4)',
                         lineHeight: 1.6
                     }}>
                         {isExpanded ? (
@@ -463,11 +463,11 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                 <div
                                     data-email-body
                                     style={{
-                                        marginTop: 'var(--space-md)',
-                                        padding: 'var(--opened-body-pad)',
-                                        backgroundColor: 'var(--opened-body-bg)',
-                                        border: 'var(--opened-body-border)',
-                                        borderRadius: 'var(--radius-md)',
+                                        marginTop: 'var(--space-4)',
+                                        padding: '0',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius-3)',
                                         cursor: 'text',
                                         userSelect: 'text',
                                         WebkitUserSelect: 'text'
@@ -489,7 +489,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                     ) : (
                                         <>
                                             {shown.remote && <ImagesStrip state={images.state} onLoad={images.load} variant="inline" />}
-                                            <div style={{ marginTop: shown.remote ? 'var(--space-md)' : 0 }}>
+                                            <div style={{ marginTop: shown.remote ? 'var(--space-4)' : 0 }}>
                                                 <MailFrame
                                                     html={shown.html}
                                                     look={paper ? 'paper' : 'theme'}
@@ -505,19 +505,19 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                     {/* Attachments */}
                                     {attachments.length > 0 && (
                                         <div style={{
-                                            marginTop: 'var(--space-lg)',
-                                            paddingTop: 'var(--space-md)',
-                                            borderTop: '1px solid var(--color-border)'
+                                            marginTop: 'var(--space-6)',
+                                            paddingTop: 'var(--space-4)',
+                                            borderTop: '1px solid var(--line-1)'
                                         }}>
                                             <div style={{
-                                                fontSize: 'var(--font-size-sm)',
-                                                fontWeight: 'var(--weight-semibold)',
-                                                color: 'var(--color-text-muted)',
-                                                marginBottom: 'var(--space-sm)'
+                                                fontSize: 'var(--size-body)',
+                                                fontWeight: 'var(--weight-medium)',
+                                                color: 'var(--text-3)',
+                                                marginBottom: 'var(--space-2)'
                                             }}>
                                                 Attachments ({formatCount(attachments.length)})
                                             </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
                                                 {attachments.map((attachment) => (
                                                     <a
                                                         key={attachment.part}
@@ -530,24 +530,24 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                                         style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            gap: 'var(--space-sm)',
-                                                            padding: 'var(--space-sm)',
-                                                            backgroundColor: 'var(--surface-card)',
-                                                            border: '1px solid var(--color-border)',
-                                                            borderRadius: 'var(--radius-sm)',
+                                                            gap: 'var(--space-2)',
+                                                            padding: 'var(--space-2)',
+                                                            backgroundColor: 'var(--surface-1)',
+                                                            border: '1px solid var(--line-1)',
+                                                            borderRadius: 'var(--radius-2)',
                                                             textDecoration: 'none',
-                                                            color: 'var(--color-text-main)',
-                                                            fontSize: 'var(--font-size-sm)',
+                                                            color: 'var(--text-1)',
+                                                            fontSize: 'var(--size-body)',
                                                             cursor: 'pointer',
-                                                            transition: 'background-color var(--dur-fast) var(--ease)'
+                                                            transition: 'background-color var(--dur-instant) var(--ease-in)'
                                                         }}
-                                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-subtle)'}
-                                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-card)'}
+                                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-1)'}
+                                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-1)'}
                                                     >
                                                         <Download size={16} />
                                                         <span style={{ flex: 1 }}>{attachment.filename ?? `attachment-${attachment.part}`}</span>
                                                         {attachment.size !== null && (
-                                                            <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-xs)' }}>
+                                                            <span style={{ color: 'var(--text-3)', fontSize: 'var(--size-caption)' }}>
                                                                 {formatSize(attachment.size)}
                                                             </span>
                                                         )}
@@ -561,14 +561,14 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                 {/* Inline Actions */}
                                 <div
                                     style={{
-                                        marginTop: 'var(--space-lg)',
+                                        marginTop: 'var(--space-6)',
                                         display: 'flex',
-                                        gap: 'var(--space-sm)',
-                                        borderTop: '1px solid var(--color-border)',
-                                        paddingTop: 'var(--space-md)',
+                                        gap: 'var(--space-2)',
+                                        borderTop: '1px solid var(--line-1)',
+                                        paddingTop: 'var(--space-4)',
                                         cursor: isExpanded ? 'grab' : 'inherit'
                                     }}
-                                    onPointerEnter={() => setDragOrigin('bottom center')}
+                                    onPointerEnter={() => setRestOriginY(1)}
                                     onPointerDown={(e) => {
                                         if (isExpanded) {
                                             // Allow text selection - buttons already have stopPropagation
@@ -577,28 +577,9 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                         }
                                     }}
                                 >
-                                    <button
-                                        onClick={handleArchive}
-                                        style={{
-                                            backgroundColor: 'var(--archive-button-bg)',
-                                            color: 'var(--archive-button-text)',
-                                            padding: '8px 24px',
-                                            borderRadius: 'var(--radius-pill)',
-                                            fontWeight: 'var(--weight-semibold)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            boxShadow: 'var(--shadow-md)',
-                                            transition: 'transform var(--dur-fast) var(--ease)',
-                                            marginLeft: 'auto',
-                                            cursor: 'pointer',
-                                            border: 'var(--archive-button-border)'
-                                        }}
-                                        onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.97)'}
-                                        onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                    >
-                                        <Check size={16} style={{ color: 'var(--archive-button-icon)' }} /> Archive
-                                    </button>
+                                    <Button icon={<Check size={16} aria-hidden="true" style={{ color: 'var(--success)' }} />} onClick={handleArchive} style={{ marginLeft: 'auto' }}>
+                                        Archive
+                                    </Button>
                                 </div>
                             </motion.div>
                         ) : (
