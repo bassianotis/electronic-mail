@@ -159,7 +159,7 @@ const AccountRow: React.FC<{
                 <span className={`st-state${shown.warn ? ' st-state-warn' : ''}`}>
                     {shown.warn && <TriangleAlert size={13} aria-hidden="true" />}{shown.text}
                 </span>
-                <Button kind="quiet" size="sm" dangerText onClick={onAsk} aria-expanded={asking} disabled={removing}>Remove…</Button>
+                <Button kind="danger-text" size="sm" onClick={onAsk} aria-expanded={asking} disabled={removing}>Remove…</Button>
             </div>
             {/* The question opens beneath the row like the Inbox's gaps close: its space on the app's
                 curve (200ms), the rows below sliding with it, the words fading in (150ms). With Reduce

@@ -6,7 +6,7 @@
  * anything typed but not yet saved is saved first.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronsUpDown, Download, ExternalLink, Filter, Key, TriangleAlert, UserRound, Users, X } from 'lucide-react';
+import { Download, ExternalLink, Filter, Key, TriangleAlert, UserRound, Users, X } from 'lucide-react';
 import { useMail } from '../../context/MailContext';
 import { useStatuses } from '../../api/events';
 import { tabLabel } from '../../utils/accountLabel';
@@ -17,7 +17,7 @@ import { OpeningSection } from './OpeningSection';
 import { AccountsSection } from './AccountsSection';
 import { AddAccount } from './AddAccount';
 import { BackupSection } from './BackupSection';
-import { IconButton } from '../../ui/Button';
+import { Button, IconButton } from '../../ui/Button';
 import { Back, Dialog } from '../../ui/Dialog';
 import { Menu, MenuItem } from '../../ui/Menu';
 import { rememberSection, type SectionKey, type SettingsTarget } from './useSettings';
@@ -170,15 +170,15 @@ const AccountSwitcher: React.FC<{
 
     return (
         <div style={{ position: 'relative' }}>
-            <button ref={buttonRef} type="button" className="st-switcher" aria-haspopup="menu" aria-expanded={open}
+            {/* The shared Button's picker kind at its two-line size (board P5-1, row 10) */}
+            <Button ref={buttonRef} kind="picker" twoLine className="st-switcher" aria-haspopup="menu" aria-expanded={open}
                 aria-label={`Account: ${label(current)}, ${current.email}. Switch account`}
                 onClick={() => onOpen(!open)}>
                 <span className="st-who">
                     <b>{label(current)}</b>
                     <small>{current.email}</small>
                 </span>
-                <span className="st-chevrons"><ChevronsUpDown size={14} aria-hidden="true" /></span>
-            </button>
+            </Button>
             {open && (
                 // The shared Menu: the checked account takes the focus; arrows, Esc (the menu, not Settings), Tab
                 <Menu label="Accounts" className="st-menu" style={{ left: 0, right: 0, top: 'calc(100% - 2px)' }}

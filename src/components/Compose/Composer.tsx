@@ -15,7 +15,7 @@
  * cards), except Esc (rule L4): it closes a menu in it, else the composer, keeping the draft.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronDown, CornerUpLeft, File as FileIcon, Forward, Minimize2, Paperclip, Reply, ReplyAll, Send, Trash2, X } from 'lucide-react';
+import { CornerUpLeft, File as FileIcon, Forward, Minimize2, Paperclip, Reply, ReplyAll, Send, Trash2, X } from 'lucide-react';
 import { useComposer } from '../../context/ComposerContext';
 import { useMail } from '../../context/MailContext';
 import { composerTitle, isUploading, type ReplyType } from '../../utils/replyDraft';
@@ -25,6 +25,7 @@ import { formatSize } from '../../utils/format';
 import { formatDate } from '../../utils/formatDate';
 import { Menu, MenuItem } from '../../ui/Menu';
 import { Button, IconButton } from '../../ui/Button';
+import { TextArea, TextInput } from '../../ui/Field';
 import { Tooltip } from '../../ui/Tooltip';
 
 const TYPES: { type: ReplyType; label: string; Icon: typeof Reply }[] = [
@@ -32,16 +33,6 @@ const TYPES: { type: ReplyType; label: string; Icon: typeof Reply }[] = [
     { type: 'replyAll', label: 'Reply all', Icon: ReplyAll },
     { type: 'forward', label: 'Forward', Icon: Forward },
 ];
-
-const linkButton: React.CSSProperties = {
-    border: 0,
-    background: 'transparent',
-    padding: 'var(--space-1) var(--space-2)',
-    fontFamily: 'inherit',
-    fontSize: 'var(--size-body)',
-    color: 'var(--text-3)',
-    cursor: 'pointer'
-};
 
 // The reply-type and From menus (the shared Menu), placed inside the composer
 const menuPlace: React.CSSProperties = { position: 'absolute', zIndex: 25 /* layer: popover, local (inside the composer) */ };
@@ -97,12 +88,12 @@ export const Composer: React.FC<{
     // The message it answers (reading-navigation-spec.md §6): a button that shows it in the band
     const answered = draft.original?.email;
     const targetLink = onShowTarget && isReply && answered ? (
-        <button type="button" className="em-target-link" onClick={onShowTarget} title="Show it above">
-            <CornerUpLeft size={13} aria-hidden="true" style={{ flexShrink: 0 }} />
+        <Button kind="link" className="em-target-link" onClick={onShowTarget} title="Show it above" style={{ flexShrink: 1, minWidth: 0 }}
+            icon={<CornerUpLeft size={13} aria-hidden="true" style={{ flexShrink: 0 }} />}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {draft.type === 'forward' ? 'Forwarding' : 'Replying to'} {answered.mailbox === 'Sent' || myAddresses.includes((answered.senderAddress ?? '').toLowerCase()) ? 'Me' : answered.sender}, {formatDate(answered.date)}
             </span>
-        </button>
+        </Button>
     ) : null;
     const gutter = isReply ? 34 : 0;
     const from = accounts.find(a => a.id === draft.fromAccountId);
@@ -195,31 +186,18 @@ export const Composer: React.FC<{
                     <div style={fieldRow}>
                         <span style={{ flex: `0 0 ${gutter}px` }} />
                         <span style={fieldLabel}>From</span>
-                        <button
+                        {/* The shared Button's picker kind (board P5-1, row 10): the current choice, its chevron */}
+                        <Button
                             ref={fromButtonRef}
-                            type="button"
+                            kind="picker"
                             aria-haspopup="menu"
                             aria-expanded={fromOpen}
                             onClick={() => { setFromOpen(open => !open); setTypeOpen(false); }}
                             onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setFromOpen(true); setTypeOpen(false); } }}
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 'var(--space-2)',
-                                padding: 'var(--space-1) var(--space-2)',
-                                marginLeft: '-8px',
-                                border: 0,
-                                borderRadius: 'var(--radius-2)',
-                                background: fromOpen ? 'var(--surface-1)' : 'transparent',
-                                fontFamily: 'inherit',
-                                fontSize: 'var(--size-body)',
-                                color: 'var(--text-1)',
-                                cursor: 'pointer'
-                            }}
+                            style={{ marginLeft: '-8px' }}
                         >
                             {from?.displayName && <>{from.displayName} </>}<span style={{ color: 'var(--text-3)' }}>{from?.email}</span>
-                            <ChevronDown size={14} aria-hidden="true" />
-                        </button>
+                        </Button>
                     </div>
                 )}
 
@@ -230,40 +208,27 @@ export const Composer: React.FC<{
                     gutter={gutter}
                     gutterContent={isReply && draft.original?.email ? (
                         <Tooltip content={`${current.label}: change to Reply, Reply all or Forward`}>
-                            <button
+                            <Button
                                 ref={typeButtonRef}
-                                type="button"
+                                kind="picker"
                                 aria-haspopup="menu"
                                 aria-expanded={typeOpen}
                                 aria-label={`${current.label}, change`}
                                 onClick={() => setTypeOpen(open => !open)}
                                 onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setTypeOpen(true); } }}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '2px',
-                                    height: '28px',
-                                    padding: '0 var(--space-1) 0 var(--space-2)',
-                                    marginLeft: '-8px',
-                                    border: 0,
-                                    borderRadius: 'var(--radius-2)',
-                                    background: typeOpen ? 'var(--surface-1)' : 'transparent',
-                                    color: 'var(--text-3)',
-                                    cursor: 'pointer'
-                                }}
+                                style={{ marginLeft: '-8px' }}
                             >
                                 <current.Icon size={16} aria-hidden="true" />
-                                <ChevronDown size={14} aria-hidden="true" />
-                            </button>
+                            </Button>
                         </Tooltip>
                     ) : null}
                     onActivate={isReply ? expand : undefined}
                     placeholder="Add people"
                     trailing={(draft.expanded && (!draft.showCc || !draft.showBcc)) || targetLink ? (
-                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-4)', minWidth: 0 }}>
                             {targetLink}
-                            {draft.expanded && !draft.showCc && <button type="button" style={linkButton} onClick={() => update({ showCc: true }, false)}>Cc</button>}
-                            {draft.expanded && !draft.showBcc && <button type="button" style={linkButton} onClick={() => update({ showBcc: true }, false)}>Bcc</button>}
+                            {draft.expanded && !draft.showCc && <Button kind="text" onClick={() => update({ showCc: true }, false)}>Cc</Button>}
+                            {draft.expanded && !draft.showBcc && <Button kind="text" onClick={() => update({ showBcc: true }, false)}>Bcc</Button>}
                         </span>
                     ) : null}
                 />
@@ -279,22 +244,13 @@ export const Composer: React.FC<{
                     <div style={fieldRow}>
                         <span style={{ flex: `0 0 ${gutter}px` }} />
                         <label htmlFor={`subject-${draft.id}`} style={fieldLabel}>Subject</label>
-                        <input
+                        <TextInput
+                            bare
                             id={`subject-${draft.id}`}
                             type="text"
                             value={draft.subject}
                             onChange={e => update({ subject: e.target.value, subjectEdited: true })}
-                            style={{
-                                flex: 1,
-                                minWidth: '120px',
-                                border: 0, // edgeless; the focus ring is the page's (rule K3)
-                                background: 'transparent',
-                                fontFamily: 'inherit',
-                                fontSize: 'var(--size-body)',
-                                fontWeight: 'var(--weight-medium)',
-                                color: 'var(--text-1)',
-                                padding: 'var(--space-1) 0'
-                            }}
+                            style={{ flex: 1, minWidth: '120px', fontWeight: 'var(--weight-medium)', padding: 'var(--space-1) 0' }}
                         />
                     </div>
                 )}
@@ -331,11 +287,12 @@ export const Composer: React.FC<{
                 )}
             </div>
 
-            {/* The message: clicking anywhere here types into it. The box has 12px of room inside, so its
-                focus ring clears the text (owner, 2026-11-13); the text stays where it was, and the
-                signature sits just below the box, clear of the ring too. */}
-            <div onClick={() => bodyRef.current?.focus()} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 'var(--space-2) var(--space-4) var(--space-1)', cursor: 'text' }}>
-                <textarea
+            {/* The message: clicking anywhere here types into it. A writing surface: no ring and no box,
+                only the caret (rule K3, revised 2026-11-16, which drops the 12px of room of 2026-11-13);
+                the text lines up with the field labels above, 28px in. */}
+            <div onClick={() => bodyRef.current?.focus()} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 'var(--space-5) 28px var(--space-4)', cursor: 'text' }}>
+                <TextArea
+                    bare
                     ref={bodyRef}
                     value={draft.body}
                     rows={2}
@@ -346,14 +303,8 @@ export const Composer: React.FC<{
                     style={{
                         display: 'block',
                         width: '100%',
-                        boxSizing: 'border-box',
-                        border: 0, // edgeless; the focus ring is the page's (rule K3)
-                        borderRadius: 'var(--radius-2)',
                         resize: 'none',
                         overflow: 'hidden',
-                        padding: 'var(--space-3)',
-                        background: 'transparent',
-                        fontFamily: 'inherit',
                         fontSize: 'var(--size-title)',
                         lineHeight: 1.65,
                         color: 'var(--text-2)'
@@ -361,7 +312,7 @@ export const Composer: React.FC<{
                 />
                 {/* The From account's signature: added when saving and sending, changed in Settings */}
                 {from?.signature && (
-                    <p title="Your signature: change it in Settings" style={{ margin: 'var(--space-1) 0 0', padding: '0 var(--space-3) var(--space-3)', whiteSpace: 'pre-line', fontSize: 'var(--size-large)', lineHeight: 1.6, color: 'var(--text-4)', cursor: 'default' }}>
+                    <p title="Your signature: change it in Settings" style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-line', fontSize: 'var(--size-large)', lineHeight: 1.6, color: 'var(--text-4)', cursor: 'default' }}>
                         {'—\n'}{from.signature}
                     </p>
                 )}
@@ -393,7 +344,7 @@ export const Composer: React.FC<{
                                 : <span style={{ color: 'var(--text-3)', fontSize: 'var(--size-caption)' }}>{formatSize(file.size)}</span>}
                             <Tooltip content={`Remove ${file.filename}`}>
                                 <button type="button" aria-label={`Remove ${file.filename}`} onClick={() => removeAttachment(file.key)} className="em-icon-button"
-                                    style={{ width: '20px', height: '20px', flexShrink: 0, padding: 0, border: 0, borderRadius: 'var(--radius-full)', background: 'transparent', color: 'var(--text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                    style={{ width: '20px', height: '20px', flexShrink: 0, padding: 0, border: 0, borderRadius: 'var(--radius-1)' /* square, radius 4 on hover (owner, Checkpoint D) */, background: 'transparent', color: 'var(--text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                                     <X size={14} aria-hidden="true" />
                                 </button>
                             </Tooltip>

@@ -33,8 +33,7 @@ import type { ReplyType } from '../../utils/replyDraft';
 import { Reply, ReplyAll, Forward, RotateCcw, Archive, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DURATION, tween } from '../../utils/motion';
 import { useEscape, Z } from '../../utils/layers';
-import { Tooltip } from '../../ui/Tooltip';
-import { Button } from '../../ui/Button';
+import { Button, IconButton } from '../../ui/Button';
 
 interface LibraryCardViewProps {
     /** The conversation's card (or any message of it). */
@@ -394,13 +393,13 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
             <span style={{ marginRight: 'auto', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {forwarding ? 'Not the message you\u2019re forwarding' : 'Not the message you\u2019re replying to'}
             </span>
-            <button type="button" onClick={() => setSelectedKey(target.msgKey)}>
+            <Button kind="quiet" size="sm" onClick={() => setSelectedKey(target.msgKey)}>
                 {isMine(target) ? 'Back to your message' : `Back to ${target.sender}\u2019s message`}
-            </button>
+            </Button>
             {!selected.msgKey.startsWith('pending-') && (
-                <button type="button" onClick={() => void replyInstead()}>
+                <Button kind="quiet" size="sm" onClick={() => void replyInstead()}>
                     {forwarding ? 'Forward this one instead' : 'Reply to this one instead'}
-                </button>
+                </Button>
             )}
         </div>
     ) : undefined;
@@ -574,31 +573,19 @@ export const LibraryCardView: React.FC<LibraryCardViewProps> = ({ email, onClose
                         {/* Previous / next thread, with the subject on hover ("thread": board P2, change 3) */}
                         {convList && place >= 0 && (
                             <div className="em-conv-pill" style={{ position: 'absolute', right: 0, top: 0, pointerEvents: 'auto' }}>
-                                <Tooltip placement="above" content={prevCard ? <><span className="ba-tooltip__lead">Previous</span>{prevCard.subject}</> : 'Previous thread'}>
-                                    <button
-                                        type="button"
-                                        disabled={!prevCard}
-                                        aria-label={prevCard ? `Previous thread: ${prevCard.subject}` : 'Previous thread'}
-                                        onClick={() => { if (prevCard) onOpen(prevCard, listKey); }}
-                                    >
-                                        <ChevronLeft size={16} aria-hidden="true" />
-                                    </button>
-                                </Tooltip>
+                                <IconButton tipPlacement="above" tip={prevCard ? <><span className="ba-tooltip__lead">Previous</span>{prevCard.subject}</> : 'Previous thread'}
+                                    label={prevCard ? `Previous thread: ${prevCard.subject}` : 'Previous thread'} disabled={!prevCard}
+                                    icon={<ChevronLeft size={16} aria-hidden="true" />}
+                                    onClick={() => { if (prevCard) onOpen(prevCard, listKey); }} />
                                 {at >= 0 && (
                                     <span style={{ padding: '0 var(--space-1)', fontSize: 'var(--size-small)', color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                         {at + 1} of {convList.total}
                                     </span>
                                 )}
-                                <Tooltip placement="above" content={nextCard ? <><span className="ba-tooltip__lead">Next</span>{nextCard.subject}</> : 'Next thread'}>
-                                    <button
-                                        type="button"
-                                        disabled={!nextCard}
-                                        aria-label={nextCard ? `Next thread: ${nextCard.subject}` : 'Next thread'}
-                                        onClick={() => { if (nextCard) onOpen(nextCard, listKey); }}
-                                    >
-                                        <ChevronRight size={16} aria-hidden="true" />
-                                    </button>
-                                </Tooltip>
+                                <IconButton tipPlacement="above" tip={nextCard ? <><span className="ba-tooltip__lead">Next</span>{nextCard.subject}</> : 'Next thread'}
+                                    label={nextCard ? `Next thread: ${nextCard.subject}` : 'Next thread'} disabled={!nextCard}
+                                    icon={<ChevronRight size={16} aria-hidden="true" />}
+                                    onClick={() => { if (nextCard) onOpen(nextCard, listKey); }} />
                             </div>
                         )}
                     </div>

@@ -8,11 +8,15 @@
  *   the page behind is inert, Esc closes it, and focus returns to whatever opened it;
  * - the scrim closes it only when nothing typed would be lost: with `dirty`, a click outside does
  *   nothing, and it never saves.
- * Mount it inside an AnimatePresence: it fades and scales in, and out again.
+ * Sizes: small 400 (the default), Settings 880 (its own class), reading (the reading width, 1000: a new
+ * message) and alert (phase 5: the critical layer over everything, no close, nothing behind it can be
+ * clicked, Esc does nothing, one action: signed out).
+ * Mount it inside an AnimatePresence: it fades and scales in, and out again (`still`: it appears and
+ * goes at once).
  * A second step replaces the content in place, with Back at the top left (never a dialog on a
  * dialog). An irreversible action asks a Question inside the surface.
  */
-import React, { forwardRef, useId, useRef } from 'react';
+import React, { forwardRef, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { ChevronLeft, X } from 'lucide-react';
@@ -31,6 +35,17 @@ type DialogProps = {
     dirty?: boolean;
     /** 400 (the default), or the dialog's own width */
     width?: number | string;
+    /** reading: the reading width (a new message); alert: over everything, no close, one action */
+    size?: 'reading' | 'alert';
+    /** Named in words rather than by its title (a dialog that lays itself out without one) */
+    label?: string;
+    /** The alert: its words (aria-describedby) and what shows under its action */
+    icon?: React.ReactNode;
+    after?: React.ReactNode;
+    /** Appears and goes at once, with no fade */
+    still?: boolean;
+    /** The layer's own place (a new message starts under the server band) */
+    layerStyle?: React.CSSProperties;
     closeLabel?: string;
     /** Body and actions inside one form (Enter submits) */
     onSubmit?: (e: React.FormEvent<HTMLFormElement>) => void;
@@ -47,22 +62,42 @@ type DialogProps = {
 
 /** The ref is the dialog's own box (Settings places the notices by it). */
 export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
-    { title, onClose, dirty = false, width, closeLabel = 'Close', onSubmit, actions, bare, titleId, initialFocus, className, style, children },
+    { title, onClose, dirty = false, width, size, label, icon, after, still, layerStyle, closeLabel = 'Close', onSubmit, actions, bare, titleId, initialFocus, className, style, children },
     ref,
 ) {
     const ownId = useId();
     const labelId = titleId ?? `${ownId}-title`;
+    const alert = size === 'alert';
     const layer = useRef<HTMLDivElement>(null);
     const box = useRef<HTMLDivElement | null>(null);
     const setBox = (el: HTMLDivElement | null) => {
         box.current = el;
         if (typeof ref === 'function') ref(el); else if (ref) ref.current = el;
     };
-    // The first field; a dialog that lays itself out starts on itself
-    useModal(layer, true, { initial: () => initialFocus?.() ?? box.current?.querySelector<HTMLElement>(FIELDS) ?? (bare ? box.current : undefined) });
-    useEscape(true, 'dialog', onClose);
+    // The first field; a dialog that lays itself out starts on itself; an alert on its one action.
+    // An alert keeps nothing else usable, not even the notices.
+    useModal(layer, true, {
+        keep: alert ? '[data-layer="tooltip"]' : undefined,
+        initial: () => initialFocus?.() ?? box.current?.querySelector<HTMLElement>(alert ? '.ba-dialog__actions button' : FIELDS) ?? (bare ? box.current : undefined),
+    });
+    useEscape(!alert, 'dialog', onClose);
+    // An alert can't be put away: Esc does nothing, and nothing beneath it hears the key
+    useEffect(() => {
+        if (!alert) return;
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); } };
+        window.addEventListener('keydown', onKey, true);
+        return () => window.removeEventListener('keydown', onKey, true);
+    }, [alert]);
 
-    const inner = bare ? children : (
+    const inner = bare ? children : alert ? (
+        <>
+            {icon}
+            <h2 className="ba-dialog__title" id={labelId}>{title}</h2>
+            <p className="ba-dialog__words" id={`${ownId}-words`}>{children}</p>
+            <div className="ba-dialog__actions">{actions}</div>
+            {after && <span className="ba-dialog__after">{after}</span>}
+        </>
+    ) : (
         <>
             <div className="ba-dialog__head">
                 <h2 className="ba-dialog__title" id={labelId}>{title}</h2>
@@ -74,12 +109,13 @@ export const Dialog = forwardRef<HTMLDivElement, DialogProps>(function Dialog(
     );
 
     return createPortal(
-        <div ref={layer} className="ba-layer" data-layer="dialog">
-            <motion.div className="ba-scrim" onClick={() => { if (!dirty) onClose(); }}
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: leave() }} transition={tween(DURATION.mid)} />
-            <motion.div ref={setBox} role="dialog" aria-modal="true" aria-labelledby={labelId} tabIndex={-1}
-                className={cx('ba-dialog', className)} style={{ ...(width !== undefined ? { width } : null), ...style }}
-                initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98, transition: leave() }} transition={tween(DURATION.mid)}>
+        <div ref={layer} className={cx('ba-layer', alert && 'ba-layer--critical')} data-layer={alert ? 'critical' : 'dialog'} style={layerStyle}>
+            <motion.div className="ba-scrim" onClick={() => { if (!dirty && !alert) onClose(); }}
+                initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: leave() }} transition={tween(DURATION.mid)} />
+            <motion.div ref={setBox} role={alert ? 'alertdialog' : 'dialog'} aria-modal="true" tabIndex={-1}
+                aria-label={label} aria-labelledby={label ? undefined : labelId} aria-describedby={alert ? `${ownId}-words` : undefined}
+                className={cx('ba-dialog', size && `ba-dialog--${size}`, className)} style={{ ...(width !== undefined ? { width } : null), ...style }}
+                initial={still ? false : { opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98, transition: leave() }} transition={tween(DURATION.mid)}>
                 {onSubmit && !bare ? <form className="ba-dialog__form" onSubmit={onSubmit} noValidate>{inner}</form> : inner}
             </motion.div>
         </div>,

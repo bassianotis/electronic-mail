@@ -168,7 +168,13 @@ export const ConversationStack: React.FC<ConversationStackProps> = ({
                         title={label}
                         aria-label={label}
                         style={{
-                            all: 'unset',
+                            // Reset by hand, not with all: unset, which also took away the keyboard ring
+                            // (rule K3; owner, Checkpoint D): the page's ring shows on Tab, never on a click
+                            appearance: 'none',
+                            margin: 0,
+                            padding: 0,
+                            font: 'inherit',
+                            color: 'inherit',
                             cursor: 'pointer',
                             position: 'absolute',
                             zIndex: 2 - k, // layer: view, local (the edges under the card)

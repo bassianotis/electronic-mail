@@ -18,15 +18,15 @@ const ORDER: readonly LayerName[] = ['page', 'chrome', 'view', 'panel', 'dialog'
 /**
  * Every app-level z-index, by its named layer (rule L2): each is its layer's token. Within a layer,
  * the page's order decides (the bucket dialog's scrim comes before the dialog). CSS files use the
- * tokens directly: .server-banner (chrome), trials.css (panel), ui.css (the dialog, the tooltip and
- * the notices), apps-menu.css (popover), .signed-out-scrim (critical).
+ * tokens directly: .server-banner (chrome), trials.css (panel), ui.css (the dialogs, the new message
+ * among them; the alert, signed out, at critical; the tooltip and the notices), apps-menu.css (popover).
  */
 const layer = (name: LayerName) => `var(--layer-${name})`;
 export const Z = {
     chrome: { rail: layer('chrome'), dock: layer('chrome') },
     view: { thread: layer('view'), search: layer('view') },
     panel: { corner: layer('panel'), playground: layer('panel') },
-    dialog: { newMessage: layer('dialog'), tour: layer('dialog') },
+    dialog: { tour: layer('dialog') },
     popover: { dockMenu: layer('popover') },
     drag: { card: layer('drag') },
     critical: { sessionEnded: layer('critical') },

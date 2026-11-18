@@ -8,7 +8,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { Tooltip } from '../../ui/Tooltip';
+import { IconButton } from '../../ui/Button';
 import { useMail } from '../../context/MailContext';
 import { useComposer } from '../../context/ComposerContext';
 import { useDragDropActions } from '../../context/DragDropContext';
@@ -178,31 +178,17 @@ const ThreadCardItem: React.FC<{ item: UpNextThread; bucketIds: string[]; onOpen
                     <Subject text={t.subject} />
                     <Meta who={t.fromName || t.fromAddr || 'Unknown'} count={t.messageCount} date={t.latestDate} />
                 </button>
-                <Tooltip content="Archive">
-                    <button
-                        type="button"
-                        className="upnext-archive"
-                        aria-label="Archive"
-                        onClick={() => { focusNextBeforeLeaving(slotRef.current); onMove('archive'); }} // rule K7
-                        style={{
-                            position: 'absolute',
-                            top: '8px',
-                            right: '8px',
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: 'var(--radius-full)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: 'var(--surface-raised)',
-                            color: 'var(--success)',
-                            border: '1px solid var(--line-2)',
-                            boxShadow: 'none',
-                        }}
-                    >
-                        <Check size={16} />
-                    </button>
-                </Tooltip>
+                {/* The 28 square secondary icon button with the green check, like Archive on Inbox cards
+                    (board P5-buttons-sorted, row 7); shown on hover or keyboard focus */}
+                <IconButton
+                    size={28}
+                    kind="secondary"
+                    className="upnext-archive"
+                    label="Archive"
+                    icon={<Check size={14} aria-hidden="true" style={{ color: 'var(--success)' }} />}
+                    onClick={() => { focusNextBeforeLeaving(slotRef.current); onMove('archive'); }} // rule K7
+                    style={{ position: 'absolute', top: '8px', right: '8px' }}
+                />
             </motion.div>
         </div>
     );

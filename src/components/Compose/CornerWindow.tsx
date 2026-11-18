@@ -13,7 +13,7 @@ import { useComposer } from '../../context/ComposerContext';
 import { composerTitle } from '../../utils/replyDraft';
 import { Composer } from './Composer';
 import { useEscape, Z } from '../../utils/layers';
-import { IconButton } from '../../ui/Button';
+import { Button, IconButton } from '../../ui/Button';
 
 const LAYER = Z.panel.corner;
 
@@ -56,20 +56,10 @@ export const CornerWindow: React.FC = () => {
                     boxShadow: 'var(--shadow-raised)'
                 }}
             >
-                <button type="button" onClick={() => update({ place: 'corner' }, false)} style={{
-                    all: 'unset',
-                    flex: 1,
-                    minWidth: 0,
-                    cursor: 'pointer',
-                    fontSize: 'var(--size-body)',
-                    fontWeight: 'var(--weight-medium)',
-                    color: 'var(--text-1)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                }}>
-                    {title}
-                </button>
+                {/* The title opens it again: the shared Button's text kind (board P5-1, row 8) */}
+                <Button kind="text" onClick={() => update({ place: 'corner' }, false)} style={{ flex: 1, minWidth: 0, flexShrink: 1, justifyContent: 'flex-start', color: 'var(--text-1)' /* regular weight, text-1 (owner, Checkpoint D) */ }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+                </Button>
                 <IconButton label="Open" icon={<ChevronUp size={16} aria-hidden="true" />} onClick={() => update({ place: 'corner' }, false)} />
                 {back}
                 {closeButton}

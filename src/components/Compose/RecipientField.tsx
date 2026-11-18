@@ -17,6 +17,8 @@ import { api } from '../../api/client';
 import { parseRecipients, withRecipients, type Recipient } from '../../utils/replyDraft';
 import { fieldLabel, fieldRow } from './styles';
 import { Tooltip } from '../../ui/Tooltip';
+import { Button } from '../../ui/Button';
+import { TextInput } from '../../ui/Field';
 
 interface RecipientFieldProps {
     label: 'To' | 'Cc' | 'Bcc';
@@ -174,9 +176,10 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
         >
             <span style={{ flex: `0 0 ${gutter}px`, display: 'flex' }}>{gutterContent}</span>
             {onActivate ? (
-                <button type="button" onClick={() => { onActivate(); inputRef.current?.focus(); }} style={{ ...fieldLabel, border: 0, background: 'transparent', padding: 0, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                // The row's label opens it: the shared Button's text kind (board P5-1, row 8)
+                <Button kind="text" onClick={() => { onActivate(); inputRef.current?.focus(); }} style={{ flex: fieldLabel.flex, justifyContent: 'flex-start' }}>
                     {label}
-                </button>
+                </Button>
             ) : (
                 <span style={fieldLabel}>{label}</span>
             )}
@@ -216,7 +219,7 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
                             style={{
                                 width: '20px',
                                 height: '20px',
-                                borderRadius: 'var(--radius-full)',
+                                borderRadius: 'var(--radius-1)', // square, its hover fill radius 4 (owner, Checkpoint D)
                                 border: 0,
                                 background: 'transparent',
                                 color: 'var(--text-3)',
@@ -233,31 +236,19 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
                 </span>
             ))}
             {hidden > 0 && (
-                <button
-                    type="button"
+                // The text kind (owner, Checkpoint D)
+                <Button kind="text"
                     tabIndex={-1} // the field itself opens the row from the keyboard
                     title={`Show all ${recipients.length}`}
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => inputRef.current?.focus()}
-                    className="em-icon-button"
-                    style={{
-                        flexShrink: 0,
-                        padding: 'var(--space-1) var(--space-2)',
-                        border: 0,
-                        borderRadius: 'var(--radius-full)',
-                        background: 'transparent',
-                        fontFamily: 'inherit',
-                        fontSize: 'var(--size-body)',
-                        fontWeight: 'var(--weight-medium)',
-                        color: 'var(--text-3)',
-                        whiteSpace: 'nowrap',
-                        cursor: 'pointer'
-                    }}
+                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                 >
                     +{hidden} more
-                </button>
+                </Button>
             )}
-            <input
+            <TextInput
+                bare
                 ref={inputRef}
                 aria-label={label}
                 role="combobox"
@@ -278,16 +269,7 @@ export const RecipientField: React.FC<RecipientFieldProps> = ({ label, recipient
                 }}
                 onClick={onActivate}
                 onFocus={onActivate}
-                style={{
-                    flex: 1,
-                    minWidth: folded ? 0 : '60px',
-                    border: 0, // edgeless; the focus ring is the page's (rule K3)
-                    background: 'transparent',
-                    fontFamily: 'inherit',
-                    fontSize: 'var(--size-body)',
-                    color: 'var(--text-1)',
-                    padding: 'var(--space-1) 0'
-                }}
+                style={{ flex: 1, minWidth: folded ? 0 : '60px', padding: 'var(--space-1) 0' }}
             />
             {trailing && <span ref={trailingRef} style={{ marginLeft: 'auto', display: 'flex', flexShrink: 0 }}>{trailing}</span>}
             {open && (

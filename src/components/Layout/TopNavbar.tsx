@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Search, Settings, PenSquare, ChevronRight } from 'lucide-react';
+import { Search, Settings, PenSquare, TriangleAlert } from 'lucide-react';
 import { Button, IconButton } from '../../ui/Button';
 import { useDragDrop } from '../../context/DragDropContext';
 import { useMail } from '../../context/MailContext';
@@ -54,7 +54,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                         background: 'none',
                         border: 'none',
                         cursor: 'pointer',
-                        padding: 'var(--space-2) var(--space-3)',
+                        // 40, a field's height, as Search beside it (board P5-buttons-sorted, row 4)
+                        height: 'var(--field)',
+                        padding: '0 var(--space-3)',
                         borderRadius: 'var(--radius-3)',
                         // As a drop target: the dock rows' fill and amber ring
                         backgroundColor: isHovered ? 'var(--fill-hover)' : 'transparent',
@@ -68,11 +70,12 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                 </button>
 
                 {pill && (
-                    <button type="button" className="st-pill" title={pill.title} aria-label={pill.title}
+                    // A quiet 28 button, no pill: the warning in amber, the words in text-1 (board P5-buttons-sorted, row 6)
+                    <Button kind="quiet" size="sm" className="st-pill" title={pill.title} aria-label={pill.title}
+                        icon={<TriangleAlert size={14} aria-hidden="true" style={{ color: 'var(--action)' }} />}
                         onClick={() => openSettings(pill.opens)}>
                         {pill.text}
-                        <ChevronRight size={12} aria-hidden="true" />
-                    </button>
+                    </Button>
                 )}
 
                 {connectionNote && (
@@ -122,9 +125,12 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onSearchClick, onNavigate,
                 </span>
                 <span
                     style={{
-                        display: 'block',
+                        // 40, a field's height (board P5-buttons-sorted, row 4)
+                        display: 'flex',
+                        alignItems: 'center',
                         width: '100%',
-                        padding: 'var(--space-2) var(--space-3) var(--space-2) 44px',
+                        height: 'var(--field)',
+                        padding: '0 var(--space-3) 0 44px',
                         borderRadius: 'var(--radius-2)',
                         border: '1px solid var(--line-1)',
                         backgroundColor: 'var(--surface-1)',

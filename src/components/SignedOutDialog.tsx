@@ -1,16 +1,16 @@
 /**
  * Signed out while using Mail, with the shared Bassapps sign-in:
- * a dialog over everything, on a darker scrim, and the page behind stays as it was. It can't be
+ * the shared Dialog's alert, over everything, and the page behind stays as it was. It can't be
  * dismissed, only acted on: "Sign in again" goes to the sign-in page and comes back to this exact
  * view. Anything being written was kept on this computer first (ComposerContext) and is offered back.
  * The engine says why, and the words follow it: if another computer did it, say so and say what.
  */
-import React, { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React from 'react';
 import { LogOut } from 'lucide-react';
 import { signInAgain, signedOutKind, SIGN_IN_REASON, type SignedOutKind } from '../api/family';
 import { returnPath } from '../utils/currentView';
 import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
 
 const KEPT = "Anything you were writing stays on this computer until you're back.";
 
@@ -34,32 +34,15 @@ const COPY: Record<SignedOutKind, { title: string; body: string; caption?: strin
 export const SignedOutDialog: React.FC<{ reason: string | null }> = ({ reason }) => {
     const kind = signedOutKind(reason);
     const copy = COPY[kind];
-    const button = useRef<HTMLButtonElement>(null);
-
-    useEffect(() => {
-        button.current?.focus();
-        // Escape does nothing here, and Tab stays on the one thing to do
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' || e.key === 'Tab') {
-                e.preventDefault();
-                e.stopPropagation();
-                button.current?.focus();
-            }
-        };
-        window.addEventListener('keydown', onKey, true);
-        return () => window.removeEventListener('keydown', onKey, true);
-    }, []);
-
-    return createPortal(
-        <div className="signed-out-scrim" data-layer="critical">
-            <div className="signed-out-dialog" role="alertdialog" aria-modal="true" aria-labelledby="signed-out-title" aria-describedby="signed-out-body">
-                <LogOut size={20} aria-hidden="true" style={{ color: 'var(--text-3)' }} />
-                <h2 id="signed-out-title">{copy.title}</h2>
-                <p id="signed-out-body">{copy.body}</p>
-                <Button ref={button} kind="primary" size="lg" onClick={() => signInAgain(returnPath(), SIGN_IN_REASON[kind])}>Sign in again</Button>
-                {copy.caption && <span className="signed-out-caption">{copy.caption}</span>}
-            </div>
-        </div>,
-        document.body,
+    // The shared Dialog's alert size (board P5-fields-dialogs-end-state, row 3): over everything, no
+    // close, Esc does nothing, and the focus stays on the one thing to do
+    return (
+        <Dialog size="alert" still title={copy.title} titleId="signed-out-title"
+            onClose={() => { /* it can't be dismissed, only acted on */ }}
+            icon={<LogOut size={20} aria-hidden="true" />}
+            actions={<Button kind="primary" size="lg" onClick={() => signInAgain(returnPath(), SIGN_IN_REASON[kind])}>Sign in again</Button>}
+            after={copy.caption}>
+            {copy.body}
+        </Dialog>
     );
 };

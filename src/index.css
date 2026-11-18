@@ -259,73 +259,8 @@ button {
     border-radius: var(--radius-2);
 }
 
-.images-strip-load {
-    padding: var(--space-1) 6px;
-    margin-left: -6px;
-    border: 0;
-    border-radius: var(--radius-1);
-    background: none;
-    color: var(--text-1);
-    font-size: var(--size-small);
-    font-weight: 500;
-    transition: background-color var(--dur-instant) var(--ease-in);
-}
-
-.images-strip-load:hover:not(:disabled) {
-    background: var(--fill-hover);
-}
-
-.images-strip-load:disabled {
-    color: var(--text-4);
-    opacity: 1;
-}
-
 /* After loading: the strip stays, quieter, so images showing is never a mystery */
 .images-strip-loaded {
-    color: var(--text-4);
-}
-
-/* Signed out while using Mail (SignedOutDialog.tsx): over everything, on a darker scrim */
-.signed-out-scrim {
-    position: fixed;
-    inset: 0;
-    z-index: var(--layer-critical);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--scrim);
-}
-
-.signed-out-dialog {
-    width: 440px;
-    max-width: calc(100% - 32px);
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    padding: var(--space-6);
-    background: var(--surface-raised);
-    border: 1px solid var(--line-2);
-    border-radius: var(--radius-3);
-    box-shadow: var(--shadow-overlay);
-    color: var(--text-1);
-}
-
-.signed-out-dialog h2 {
-    margin: 0;
-    font-size: var(--size-title);
-    font-weight: 500;
-}
-
-.signed-out-dialog p {
-    margin: 0;
-    font-size: var(--size-body);
-    line-height: 1.6;
-    color: var(--text-3);
-}
-
-.signed-out-caption {
-    font-size: var(--size-small);
     color: var(--text-4);
 }
 
@@ -371,10 +306,14 @@ button {
     opacity: 1;
 }
 
-/* A recipient chip with an address that won't send, when Send has taken the focus to it */
-[data-invalid-recipient]:focus {
+/* A recipient chip with an address that won't send, when Send has taken the focus to it: a red ring,
+   which like every ring shows only after a key press (rule K3); the chip's own red edge stays */
+[data-invalid-recipient]:focus-visible {
     outline: 2px solid var(--danger);
     outline-offset: 1px;
+}
+:root[data-input="pointer"] [data-invalid-recipient]:focus-visible {
+    outline-color: transparent;
 }
 
 /* The account rail's tabs (Layout/AccountRail.tsx): a shade darker than the page, no edge line;
@@ -512,18 +451,9 @@ button {
     cursor: default;
 }
 
+/* "Replying to …" above a message's text: the shared Button's link kind, 12px above the text */
 .em-reply-line {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
     margin: 0 0 var(--space-3);
-    padding: 0;
-    border: 0;
-    background: none;
-    font: inherit;
-    font-size: var(--size-small);
-    color: var(--text-4);
-    cursor: pointer;
 }
 
 .em-band-note {
@@ -539,36 +469,6 @@ button {
     color: var(--text-3);
 }
 
-.em-band-note button {
-    height: 26px;
-    padding: 0 10px;
-    border: 0;
-    border-radius: var(--radius-2);
-    background: transparent;
-    font: inherit;
-    font-size: var(--size-small);
-    color: var(--text-1);
-    cursor: pointer;
-}
-
-.em-target-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 1;
-    min-width: 0;
-    height: 28px;
-    padding: 0 6px;
-    border: 0;
-    border-radius: var(--radius-2);
-    background: transparent;
-    font: inherit;
-    font-size: var(--size-small);
-    color: var(--text-4);
-    white-space: nowrap;
-    cursor: pointer;
-}
-
 .em-conv-pill {
     display: flex;
     align-items: center;
@@ -579,33 +479,10 @@ button {
     background: var(--surface-raised);
 }
 
-.em-conv-pill button {
-    position: relative;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border: 0;
-    border-radius: var(--radius-2);
-    background: transparent;
-    color: var(--text-1);
-    cursor: pointer;
-}
-
-.em-conv-pill button:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-
 /* Hover and pressed */
 .em-tree-toggle:hover,
 .em-tree-toggle[aria-expanded="true"],
-.em-tree-row:not(:disabled):hover,
-.em-band-note button:hover,
-.em-conv-pill button:not(:disabled):hover,
-.em-target-link:hover {
+.em-tree-row:not(:disabled):hover {
     background: var(--fill-hover);
     color: var(--text-1);
 }
@@ -616,10 +493,4 @@ button {
     box-shadow: inset 0 0 0 1px var(--line-current);
 }
 
-.em-reply-line:hover {
-    color: var(--text-1);
-    text-decoration: underline;
-    text-decoration-color: color-mix(in srgb, var(--text-1) 40%, transparent);
-    text-underline-offset: 3px;
-}
 

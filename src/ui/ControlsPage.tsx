@@ -7,7 +7,7 @@
  */
 import React, { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Archive, ChevronDown, ChevronUp, Forward, SquarePen, Reply, ReplyAll, Send, Trash2, WifiOff, X } from 'lucide-react';
+import { Archive, ChevronDown, ChevronUp, Forward, Layers, ListTree, SquarePen, Reply, ReplyAll, Send, Trash2, WifiOff, X } from 'lucide-react';
 import { Button, ButtonPair, IconButton } from './Button';
 import { Field, PasswordInput, Select, TextArea, TextInput } from './Field';
 import { Checkbox, RadioGroup, Segmented, Switch } from './Choice';
@@ -86,14 +86,21 @@ const ControlsPage: React.FC = () => {
                 <div className="cp-row">
                     <Cell caption="28 × 28"><IconButton size={28} label="Close" icon={<X size={16} aria-hidden="true" />} /></Cell>
                     <Cell caption="32 × 32 (a dialog's close)"><IconButton label="Close settings" keys="Esc" icon={<X size={16} aria-hidden="true" />} /></Cell>
-                    <Cell caption="36, with an edge"><IconButton size={36} kind="secondary" label="Older message" keys="↑" icon={<ChevronUp size={16} aria-hidden="true" />} /></Cell>
-                    <Cell caption="a pair: one group, two buttons">
+                    <Cell caption="32, with an edge"><IconButton kind="secondary" label="Show the thread" icon={<ListTree size={16} aria-hidden="true" />} /></Cell>
+                    <Cell caption="a pair: one group, two buttons, 32">
                         <ButtonPair label="Messages">
-                            <IconButton size={36} label="Older message" keys="↑" icon={<ChevronUp size={16} aria-hidden="true" />} />
-                            <IconButton size={36} label="Newer message" keys="↓" icon={<ChevronDown size={16} aria-hidden="true" />} />
+                            <IconButton kind="secondary" label="Older message" keys="↑" icon={<ChevronUp size={14} aria-hidden="true" />} />
+                            <IconButton kind="secondary" label="Newer message" keys="↓" icon={<ChevronDown size={14} aria-hidden="true" />} />
                         </ButtonPair>
                     </Cell>
-                    <Cell caption="quiet, red words (opens a question)"><Button kind="quiet" size="sm" dangerText>Remove…</Button></Cell>
+                    <Cell caption="danger-text: red words (opens a question)"><Button kind="danger-text" size="sm">Remove…</Button></Cell>
+                </div>
+                <div className="cp-row">
+                    <Cell caption="text · 14px"><Button kind="text">Cc</Button></Cell>
+                    <Cell caption="text · 12px, an icon"><Button kind="text" size="sm" icon={<Layers size={14} aria-hidden="true" />}>View thread</Button></Cell>
+                    <Cell caption="link · 13px, underlined under the pointer"><Button kind="link">Forgot your passphrase?</Button></Cell>
+                    <Cell caption="picker: the current choice"><Button kind="picker">Theo Marsh <span style={{ color: 'var(--text-3)' }}>theo@lakeside-coop.example</span></Button></Cell>
+                    <Cell caption="picker, two lines"><span style={{ display: 'block', width: 200 }}><Button kind="picker" twoLine><span style={{ display: 'flex', flexDirection: 'column', fontSize: 'var(--size-small)' }}><b style={{ fontWeight: 500 }}>Co-op</b><small style={{ fontSize: 'var(--size-caption)', color: 'var(--text-4)' }}>theo@lakeside-coop.example</small></span></Button></span></Cell>
                 </div>
             </Section>
 
@@ -170,7 +177,7 @@ const ControlsPage: React.FC = () => {
                             action={<Button kind="danger" working={removing && 'Removing…'} onClick={async () => { setRemoving(true); await wait(1500); setRemoving(false); setAsking(false); }}>Remove account</Button>}>
                             Its mail stays on the mail server. Its rules and sending settings here go.
                         </Question>
-                    ) : <Button kind="quiet" size="sm" dangerText onClick={() => setAsking(true)}>Remove…</Button>}
+                    ) : <Button kind="danger-text" size="sm" onClick={() => setAsking(true)}>Remove…</Button>}
                     <Question focusCancel={false} title={`Delete the rule for “${LONG}”?`} onCancel={() => {}} action={<Button kind="danger">Delete rule</Button>}>
                         D5: a long subject in a question. The rule stops filing new mail; what it filed stays.
                     </Question>

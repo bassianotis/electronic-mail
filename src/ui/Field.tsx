@@ -3,9 +3,11 @@
  * problem. It replaces Settings' .st-input / .st-label / .st-hint / .st-problem, the bucket
  * dialog's fields and the two password builds.
  * - field: 40 high (48 on sign-in), padding 0 12, radius 6, surface-1 with a 20% edge (28% under the
- *   pointer); the amber ring on focus; a danger edge with a problem; read-only on surface-2, no edge;
+ *   pointer); focused, the edge turns text-3, no ring (K3); a danger edge with a problem; read-only on surface-2, no edge;
  *   disabled at 40%;
- * - kinds: text, password (Show / Hide inside), select (a chevron), mono (server names, ports), text area;
+ * - kinds: text, password (Show / Hide inside), select (a chevron), mono (server names, ports), text area,
+ *   and bare (phase 5): a writing surface (To, Cc, Bcc, Subject, the bodies, Search) with no box and no
+ *   ring, only the caret (rule K3); its type and width are the surface's own;
  * - a problem replaces the hint, is tied to the field (the caller's aria-describedby, aria-invalid),
  *   and shows when you leave the field or press the button, never during first typing (rules A4, K8);
  * - while a server checks what was typed, the button says so and the fields stay editable
@@ -65,12 +67,14 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
     mono?: boolean;
     /** 48 high, 16px: sign-in only */
     large?: boolean;
+    /** A writing surface: no box, no ring, the caret only */
+    bare?: boolean;
 };
 
-export const TextInput = forwardRef<HTMLInputElement, InputProps>(function TextInput({ invalid, mono, large, className, ...rest }, ref) {
+export const TextInput = forwardRef<HTMLInputElement, InputProps>(function TextInput({ invalid, mono, large, bare, className, ...rest }, ref) {
     return (
         <input {...rest} ref={ref} aria-invalid={invalid || rest['aria-invalid'] || undefined}
-            className={cx('ba-input', mono && 'ba-input--mono', large && 'ba-input--lg', className)} />
+            className={cx('ba-input', mono && 'ba-input--mono', large && 'ba-input--lg', bare && 'ba-input--bare', className)} />
     );
 });
 
@@ -103,8 +107,8 @@ export const Select = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<H
     },
 );
 
-export const TextArea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }>(
-    function TextArea({ invalid, className, ...rest }, ref) {
-        return <textarea {...rest} ref={ref} aria-invalid={invalid || undefined} className={cx('ba-input', 'ba-textarea', className)} />;
+export const TextArea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean; bare?: boolean }>(
+    function TextArea({ invalid, bare, className, ...rest }, ref) {
+        return <textarea {...rest} ref={ref} aria-invalid={invalid || undefined} className={cx('ba-input', bare ? 'ba-input--bare' : 'ba-textarea', className)} />;
     },
 );

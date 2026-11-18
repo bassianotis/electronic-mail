@@ -15,6 +15,8 @@ import { ThreadLink } from './ThreadLink';
 import { KEEP_OVER_VIEW, useEscape, useModal, Z } from '../../utils/layers';
 import { DURATION, leave, tween } from '../../utils/motion';
 import { formatCount } from '../../utils/format';
+import { IconButton } from '../../ui/Button';
+import { TextInput } from '../../ui/Field';
 
 interface SearchOverlayProps {
     isOpen: boolean;
@@ -33,8 +35,9 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
     const [page, setPage] = useState<{ q: string; result: ViewPage } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [showSenderEmailMap, setShowSenderEmailMap] = useState<Record<string, boolean>>({});
-    // Modal (rule L3): the field takes the focus, Tab stays inside, the page behind is inert, and
-    // closing goes back to the top bar's Search
+    // A view, not a dialog (rule L6; board P5-fields-dialogs-end-state, row 5): it replaces a thread
+    // instead of stacking on one. Like the thread view, the field takes the focus, Tab stays inside,
+    // the page behind is inert, and closing goes back to the top bar's Search
     const layer = useRef<HTMLDivElement>(null);
     useModal(layer, isOpen, { keep: KEEP_OVER_VIEW });
     useEscape(isOpen, 'view', onClose); // rule L4
@@ -81,8 +84,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                 <motion.div
                     ref={layer}
                     data-layer="view"
-                    role="dialog"
-                    aria-modal="true"
+                    role="region"
                     aria-label="Search"
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -109,35 +111,16 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isOpen, onClose, o
                         gap: 'var(--space-4)'
                     }}>
                         <Search size={16} className="text-muted" />
-                        <input
+                        <TextInput
+                            bare
                             type="text"
                             placeholder="Search all mail"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             autoFocus
-                            style={{
-                                flex: 1,
-                                border: 'none', // edgeless; the focus ring is the page's (rule K3)
-                                fontSize: 'var(--size-title)',
-                                backgroundColor: 'transparent'
-                            }}
+                            style={{ flex: 1, fontSize: 'var(--size-title)' }}
                         />
-                        <button
-                            type="button"
-                            aria-label="Close search"
-                            title="Close search"
-                            onClick={onClose}
-                            style={{
-                                padding: 'var(--space-2)',
-                                borderRadius: 'var(--radius-full)',
-                                backgroundColor: 'var(--surface-1)',
-                                color: 'var(--text-3)',
-                                border: 'none',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <X size={16} aria-hidden="true" />
-                        </button>
+                        <IconButton label="Close search" icon={<X size={16} aria-hidden="true" />} onClick={onClose} />
                     </div>
 
 

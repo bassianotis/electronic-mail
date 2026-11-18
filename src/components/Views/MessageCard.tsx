@@ -97,7 +97,6 @@ const ThreadNav: React.FC<ThreadNavProps> = ({ position, total, arriving, onOlde
         </ButtonPair>
         <IconButton
             kind="secondary"
-            size={36}
             className="em-tree-toggle"
             aria-expanded={treeOpen}
             label={treeOpen ? 'Hide the thread' : 'Show the thread'}
@@ -521,65 +520,28 @@ const MessageLayer: React.FC<MessageLayerProps> = ({
                 <span style={{ fontWeight: 'var(--weight-medium)', color: strong, whiteSpace: 'nowrap' }}>
                     {fromMe ? 'Me' : email.sender}
                 </span>
-                {toLine && (
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-                        {toLine}
-                    </span>
-                )}
+                {/* "to me ⌄": the shared Button's text kind (board P5-1, row 8); it shows every address */}
                 <Tooltip content={showDetails ? 'Hide addresses' : 'Show addresses'}>
-                    <button
-                        type="button"
+                    <Button
+                        kind="text"
                         onClick={e => { e.stopPropagation(); setShowDetails(!showDetails); }}
                         aria-expanded={showDetails}
-                        aria-label={showDetails ? 'Hide addresses' : 'Show addresses'}
-                        className="em-icon-button"
-                        style={{
-                            width: '24px',
-                            height: '24px',
-                            marginLeft: '-4px',
-                            flexShrink: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            border: 0,
-                            borderRadius: 'var(--radius-full)',
-                            background: showDetails ? 'var(--surface-1)' : 'transparent',
-                            color: muted,
-                            cursor: 'pointer',
-                            transform: showDetails ? 'rotate(180deg)' : 'none',
-                            transition: 'transform var(--dur-instant) var(--ease-in)'
-                        }}
+                        aria-label={`${showDetails ? 'Hide' : 'Show'} addresses${toLine ? `: ${toLine}` : ''}`}
+                        style={{ minWidth: 0, flexShrink: 1 }}
+                        trailingIcon={<ChevronDown size={14} aria-hidden="true" style={{ transform: showDetails ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-instant) var(--ease-in)' }} />}
                     >
-                        <ChevronDown size={14} aria-hidden="true" />
-                    </button>
+                        {toLine && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{toLine}</span>}
+                    </Button>
                 </Tooltip>
                 <span style={{ marginLeft: 'auto', whiteSpace: 'nowrap', color: readerMode ? muted : 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
                     {dateLabel ?? formatDateTime(email.date)}
                 </span>
                 {onCopyLink ? (
-                    <Tooltip content={linkCopied ? 'Link copied' : 'Copy link to this thread'}>
-                        <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); onCopyLink(); }}
-                            aria-label={linkCopied ? 'Link copied' : 'Copy link to this thread'}
-                            className="em-icon-button"
-                            style={{
-                                width: '32px',
-                                height: '32px',
-                                flexShrink: 0,
-                                borderRadius: 'var(--radius-full)',
-                                border: 0,
-                                background: 'transparent',
-                                color: linkCopied ? 'var(--success)' : muted,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
-                        </button>
-                    </Tooltip>
+                    // The 32 square icon button (board P5-buttons-sorted, rows 1 and 2)
+                    <IconButton label={linkCopied ? 'Link copied' : 'Copy link to this thread'}
+                        icon={linkCopied ? <Check size={16} aria-hidden="true" /> : <Link2 size={16} aria-hidden="true" />}
+                        style={linkCopied ? { color: 'var(--success)' } : undefined}
+                        onClick={e => { e.stopPropagation(); onCopyLink(); }} />
                 ) : <span style={{ width: '32px', flexShrink: 0 }} />}
                 {nav && <ThreadNav {...nav} />}
             </header>
@@ -627,9 +589,9 @@ const MessageLayer: React.FC<MessageLayerProps> = ({
                 }}>
                 <div style={{ maxWidth: readerMode ? '680px' : '100%', margin: readerMode ? '0 auto' : '0' }}>
                     {replyingTo && (
-                        <button type="button" className="em-reply-line" onClick={e => { e.stopPropagation(); replyingTo.onOpen(); }}>
-                            <CornerUpLeft size={13} aria-hidden="true" />Replying to {replyingTo.label}
-                        </button>
+                        <Button kind="link" className="em-reply-line" icon={<CornerUpLeft size={13} aria-hidden="true" />} onClick={e => { e.stopPropagation(); replyingTo.onOpen(); }}>
+                            Replying to {replyingTo.label}
+                        </Button>
                     )}
                     {bodyState === 'loading' ? (
                         <BodySkeleton minHeight={startHeight} />
@@ -651,29 +613,17 @@ const MessageLayer: React.FC<MessageLayerProps> = ({
                                 fonts={originalMode ? fonts : ''}
                             />
                             {quoted && !originalMode && (
-                                <button
+                                // The text kind (owner, Checkpoint D): words with no box, text-3, text-1 under the pointer
+                                <Button kind="text"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setShowFullBody(!showFullBody);
                                     }}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 'var(--space-2)',
-                                        padding: 'var(--space-2) var(--space-4)',
-                                        // On paper, under the sheet's left edge
-                                        margin: `16px 0 16px ${onSheet && !readerMode ? sheetLeft : 0}px`,
-                                        backgroundColor: 'var(--surface-1)',
-                                        border: '1px solid var(--line-1)',
-                                        borderRadius: 'var(--radius-full)',
-                                        color: 'var(--text-3)',
-                                        fontSize: 'var(--size-body)',
-                                        fontWeight: 500,
-                                        cursor: 'pointer'
-                                    }}
+                                    // On paper, under the sheet's left edge
+                                    style={{ margin: `16px 0 16px ${onSheet && !readerMode ? sheetLeft : 0}px` }}
                                 >
                                     {showFullBody ? 'Hide quoted text' : 'Show quoted text'}
-                                </button>
+                                </Button>
                             )}
                         </>
                     )}

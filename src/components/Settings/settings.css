@@ -43,26 +43,9 @@
     padding-top: var(--space-1);
 }
 
+/* The account switcher: the shared Button's two-line picker; 6px above the navigation */
 .st-switcher {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: 100%;
-    padding: var(--space-2) 10px;
     margin-bottom: 6px;
-    border: 1px solid var(--line-2);
-    border-radius: var(--radius-2);
-    background: var(--surface-raised);
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color var(--dur-instant) var(--ease-in);
-}
-
-.st-switcher:hover,
-.st-switcher[aria-expanded="true"] {
-    background: var(--fill-hover);
 }
 
 .st-who {
@@ -87,13 +70,6 @@
     white-space: nowrap;
 }
 
-.st-switcher .st-chevrons {
-    margin-left: auto;
-    flex-shrink: 0;
-    color: var(--text-4);
-    display: inline-flex;
-}
-
 /* The account menu: the shared Menu, under the switcher */
 .st-menu {
     position: absolute;
@@ -112,11 +88,11 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    height: 34px;
+    height: 32px; /* as a menu item (board P5-buttons-sorted, row 3) */
     flex-shrink: 0;
     padding: 0 10px;
     border: 0;
-    border-radius: var(--radius-2);
+    border-radius: var(--radius-1); /* nested inside its panel */
     background: transparent;
     color: var(--text-3);
     font: inherit;
@@ -445,25 +421,8 @@
     margin-top: var(--space-1);
 }
 
-/* The password pill along the top: a button when a password is rejected */
-.st-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    height: 24px;
-    padding: 0 10px 0 var(--space-3);
-    border: 1px solid color-mix(in srgb, var(--action) 30%, transparent);
-    border-radius: var(--radius-full);
-    background: color-mix(in srgb, var(--action) 10%, transparent);
-    color: var(--action);
-    font: inherit;
-    font-size: var(--size-caption);
-    line-height: 1;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: background-color var(--dur-instant) var(--ease-in);
-}
-
-.st-pill:hover {
-    background: color-mix(in srgb, var(--action) 18%, transparent);
+/* The password warning along the top, when a password is rejected: the shared Button, quiet at 28,
+   its words in text-1 (board P5-buttons-sorted, row 6) */
+.ba-button.st-pill {
+    color: var(--text-1);
 }

@@ -17,7 +17,6 @@ import { setOpenThread } from './utils/currentView';
 import { Login } from './components/Auth/Login';
 import { StartFrame } from './components/Loading/StartFrame';
 import { Button } from './ui/Button';
-import { FLOATING_WIDTH } from './utils/layout';
 // The design playground (?playground): loaded, with its font, only when the address asks for it
 const Playground = lazy(() => import('./components/Playground'));
 const PLAYGROUND = new URLSearchParams(window.location.search).has('playground');
@@ -34,7 +33,8 @@ import { api, couldnt, paths, AUTH_REQUIRED_EVENT, SESSION_RESTORED_EVENT } from
 import type { AuthStatus, DraftContent, DraftSummary, ThreadDetail } from './api/types';
 import { cardFromThread, messageFromThread } from './utils/emailMapper';
 import { trialsWanted } from './trials/trialsState';
-import { KEEP_OVER_VIEW, useEscape, useModal, Z } from './utils/layers';
+import { KEEP_OVER_VIEW, useModal, Z } from './utils/layers';
+import { Dialog } from './ui/Dialog';
 
 type Gate = 'loading' | 'unreachable' | 'first-run' | 'login' | 'ready';
 
@@ -177,10 +177,6 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
         fallback: () => (lastThread.current ? document.querySelector<HTMLElement>(`a[data-thread-link][href="${CSS.escape(`?thread=${encodeURIComponent(lastThread.current)}`)}"]`) : null),
     });
     const centred = !!composing && composing.place === 'docked' && !composing.original?.threadId;
-    const newMessageLayer = useRef<HTMLDivElement>(null);
-    useModal(newMessageLayer, centred);
-    // Esc closes it and keeps the draft (rule L4; the owner, 2026-11-11), as a click outside does
-    useEscape(centred, 'dialog', () => void closeDraft());
 
     // Reset to inbox whenever the active email account changes
     useEffect(() => {
@@ -324,7 +320,7 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
             <DashboardLayout
                 activeBucket={activeBucketId}
                 onBucketSelect={setActiveBucketId}
-                onSearchClick={() => setIsSearchOpen(true)}
+                onSearchClick={() => { setSelectedEmail(null); setIsSearchOpen(true); }} // views replace each other (rule L6)
                 onComposeClick={handleNewCompose}
             >
                 {activeBucketId === 'archive' ? (
@@ -356,30 +352,14 @@ function AppContent({ showOnboarding, setShowOnboarding }: { showOnboarding: boo
                 )}
             </div>
 
-            {/* A new message (or a draft without its conversation): the composer centred on its own */}
+            {/* A new message (or a draft without its conversation): the composer centred on its own, in the
+                shared Dialog at the reading width (board P5-fields-dialogs-end-state, row 4). Esc and a
+                click outside close it and keep the draft (rule L4; the owner, 2026-11-11) */}
             {centred && (
-                <div ref={newMessageLayer} data-layer="dialog" style={{ position: 'fixed', inset: 0, top: 'var(--server-banner)', zIndex: Z.dialog.newMessage }}>
-                    <div
-                        onClick={() => void closeDraft()}
-                        style={{ position: 'absolute', inset: 0, backgroundColor: 'var(--scrim)' }}
-                    />
-                    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-5) var(--space-6)' }}>
-                        <div role="dialog" aria-modal="true" aria-label="New message" style={{
-                            pointerEvents: 'auto',
-                            // Sized to the window: up to 1000px, 24px clear of each side, centred on it
-                            width: FLOATING_WIDTH,
-                            minWidth: 0,
-                            height: '780px',
-                            maxHeight: '100%',
-                            borderRadius: 'var(--radius-3)',
-                            boxShadow: 'var(--shadow-overlay)',
-                            border: '1px solid var(--line-2)',
-                            overflow: 'hidden'
-                        }}>
-                            <Composer />
-                        </div>
-                    </div>
-                </div>
+                <Dialog size="reading" bare still label="New message" title="New message" onClose={() => void closeDraft()}
+                    layerStyle={{ top: 'var(--server-banner)' }} style={{ height: '780px', overflow: 'hidden' }}>
+                    <Composer />
+                </Dialog>
             )}
 
             {/* The draft in the corner, above everything but the notices */}

@@ -27,6 +27,7 @@ import { formatCount, formatSize } from '../../utils/format';
 import { useServerUnreachable } from '../../api/reachability';
 import { focusNextBeforeLeaving, Z } from '../../utils/layers';
 import { Button } from '../../ui/Button';
+import { lastInputWasKey } from '../../shared/inputModality';
 
 
 interface InboxItemProps {
@@ -286,7 +287,7 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                 transition={{ default: tween(DURATION.slow), boxShadow: tween(DURATION.fast), layout: tween(resizing ? DURATION.slow : DURATION.mid) }}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
-                onFocus={e => setKeyFocus((e.target as HTMLElement).matches(':focus-visible'))}
+                onFocus={e => setKeyFocus((e.target as HTMLElement).matches(':focus-visible') && lastInputWasKey())} // a key press brought focus here (rule K3)
                 onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setKeyFocus(false); }}
                 onLayoutAnimationComplete={checkHover}
                 onAnimationComplete={checkHover}
@@ -378,39 +379,10 @@ export const InboxItem: React.FC<InboxItemProps> = ({ email, isExpanded, onBucke
                                 )}
                                 {/* View Thread CTA - visible when thread has multiple emails and preference is expand */}
                                 {threadCount && threadCount > 1 && onViewThread && viewPreference !== 'thread' && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onViewThread(email);
-                                        }}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 'var(--space-1)',
-                                            padding: 'var(--space-1) var(--space-3)',
-                                            borderRadius: 'var(--radius-2)',
-                                            backgroundColor: 'transparent',
-                                            border: '1px solid transparent',
-                                            color: 'var(--text-4)',
-                                            fontSize: 'var(--size-caption)',
-                                            fontWeight: 500,
-                                            cursor: 'pointer',
-                                            transition: 'background-color var(--dur-instant) var(--ease-in), color var(--dur-instant) var(--ease-in), border-color var(--dur-instant) var(--ease-in)'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.currentTarget.style.backgroundColor = 'transparent';
-                                            e.currentTarget.style.color = 'var(--text-1)';
-                                            e.currentTarget.style.borderColor = 'transparent';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.currentTarget.style.backgroundColor = 'transparent';
-                                            e.currentTarget.style.color = 'var(--text-4)';
-                                            e.currentTarget.style.borderColor = 'transparent';
-                                        }}
-                                    >
-                                        <Layers size={14} />
+                                    <Button kind="text" size="sm" icon={<Layers size={14} aria-hidden="true" />}
+                                        onClick={(e) => { e.stopPropagation(); onViewThread(email); }}>
                                         View thread
-                                    </button>
+                                    </Button>
                                 )}
                                 {/* Archive sits in the date's spot, shown on hover or when open */}
                                     <span style={{ marginLeft: 'auto', position: 'relative', display: 'flex', alignItems: 'center' }}>

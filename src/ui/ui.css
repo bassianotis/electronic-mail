@@ -1,6 +1,6 @@
 /* Bassapps design system v2: the shared controls (components.md, Batch 1; boards C1-*), one class
  * family each (prefix ba-), built once and used everywhere. Values are role tokens (tokens.css);
- * sizes follow the product (28 / 36 / 40 / 48 controls, 40 / 48 fields). */
+ * sizes follow the product (28 / 36 / 40 / 48 controls, 32 and 28 icon buttons, 40 / 48 fields). */
 
 /* ---------- Button ---------- */
 .ba-button {
@@ -33,24 +33,65 @@
 .ba-button--secondary:active:not(:disabled):not([aria-busy="true"]) { background: var(--fill-selected); }
 .ba-button--quiet { color: var(--text-2); }
 .ba-button--quiet:hover:not(:disabled):not([aria-busy="true"]) { background: var(--fill-hover); color: var(--text-1); }
-/* A quiet button whose words are a warning ("Remove…", which opens the question): red text, as Settings has it */
-.ba-button--quiet.ba-button--danger-text,
-.ba-button--quiet.ba-button--danger-text:hover:not(:disabled) { color: var(--danger); }
 .ba-button--danger { background: var(--danger); color: var(--on-danger); }
 .ba-button--danger:hover:not(:disabled):not([aria-busy="true"]) { background: var(--danger-hover); }
 .ba-button--danger:active:not(:disabled):not([aria-busy="true"]) { background: var(--danger-pressed); }
-/* Icon-only: square, 28, 32 (a dialog's close) or 36; a name in words and a tooltip with the same words */
+/* Danger-text (phase 5): secondary with red words, for an entry that leads to a question ("Remove…");
+   the question's own button is the red fill */
+.ba-button--danger-text { background: var(--surface-raised); border-color: var(--line-2); color: var(--danger); }
+.ba-button--danger-text:hover:not(:disabled):not([aria-busy="true"]) { background: var(--fill-hover); }
+.ba-button--danger-text:active:not(:disabled):not([aria-busy="true"]) { background: var(--fill-selected); }
+/* Text (phase 5): words with no box, text-3, text-1 under the pointer; 14px, or 12 (size sm); an icon
+   is 14px, 6px before the words. No padding: the words line up with the text around them. */
+.ba-button--text,
+.ba-button--link {
+    height: auto;
+    min-height: var(--target-min);
+    padding: 0;
+    gap: 6px;
+    border: 0;
+    border-radius: 0;
+    font-weight: var(--weight-regular);
+    color: var(--text-3);
+}
+.ba-button--text.ba-button--sm { height: auto; padding: 0; font-size: var(--size-caption); line-height: 16px; }
+.ba-button--text:hover:not(:disabled):not([aria-busy="true"]),
+.ba-button--text[aria-expanded="true"] { color: var(--text-1); }
+/* Link (phase 5): 13px words that take you somewhere, text-3, underlined only under the pointer, never amber */
+/* (no 24px minimum: a link sits in a line of text, and the reply line keeps its height) */
+.ba-button--link { min-height: 0; font-size: var(--size-small); line-height: 18px; }
+.ba-button--link:hover:not(:disabled) {
+    color: var(--text-1);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--text-1) 40%, transparent);
+    text-underline-offset: 3px;
+}
+/* Picker (phase 5): quiet, showing the current choice, with a trailing chevron; 28 high to sit in a
+   40 row. Words in text-1, its icons and chevron in text-3. Two lines: Settings' account switcher. */
+.ba-button--picker {
+    height: var(--control-sm);
+    padding: 0 var(--space-1) 0 var(--space-2); /* the chevron carries its own room on the right */
+    gap: var(--space-1);
+    font-weight: var(--weight-regular);
+    color: var(--text-1);
+}
+.ba-button--picker > svg { color: var(--text-3); }
+.ba-button--picker:hover:not(:disabled):not([aria-busy="true"]),
+.ba-button--picker[aria-expanded="true"] { background: var(--fill-hover); }
+.ba-button--picker.ba-button--two-line { width: 100%; height: auto; padding: var(--space-2) 10px; gap: var(--space-2); justify-content: flex-start; text-align: left; line-height: 1.5; }
+.ba-button--picker.ba-button--two-line > .ba-button__chevron { margin-left: auto; }
+/* Icon-only: always square, radius 6: 32 (the product's main size) or 28 (notices, the band); a name in
+   words and a tooltip with the same words */
 .ba-button--icon { padding: 0; }
 .ba-button--icon.ba-size-28 { width: var(--control-sm); height: var(--control-sm); }
 .ba-button--icon.ba-size-32 { width: 32px; height: 32px; }
-.ba-button--icon.ba-size-36 { width: var(--control-md); height: var(--control-md); }
 .ba-button--quiet.ba-button--icon { color: var(--text-3); }
 /* Working (A6): the progress word at full strength; a press does nothing */
 .ba-button[aria-busy="true"] { cursor: default; }
 .ba-button:disabled { opacity: var(--disabled-opacity); cursor: default; }
-/* A pair (older / newer): one group with a divider */
+/* A pair (older / newer): one group with a divider, 32 high like the icon buttons beside it */
 .ba-pair { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--radius-2); background: var(--surface-raised); }
-.ba-pair .ba-button { border: 0; border-radius: 0; height: calc(var(--control-md) - 2px); }
+.ba-pair .ba-button { border: 0; border-radius: 0; height: 30px; }
 .ba-pair .ba-button:first-child { border-radius: var(--radius-2) 0 0 var(--radius-2); }
 .ba-pair .ba-button:last-child { border-radius: 0 var(--radius-2) var(--radius-2) 0; }
 .ba-pair .ba-button + .ba-button { border-left: 1px solid var(--line-2); }
@@ -80,11 +121,21 @@
 }
 .ba-input::placeholder { color: var(--text-4); }
 .ba-input:hover:not(:disabled):not(:focus):not([aria-invalid="true"]):not([readonly]) { border-color: var(--line-field-hover); }
+/* A boxed field focused, clicked or Tabbed into: no ring, its edge turns text-3 (rule K3, revised
+   2026-11-16). A field with a problem keeps its red edge. */
+.ba-input:focus { outline: none; }
+.ba-input:focus:not([aria-invalid="true"]):not([readonly]) { border-color: var(--text-3); }
 .ba-input[aria-invalid="true"] { border-color: var(--danger); }
 .ba-input[readonly] { background: var(--surface-2); border-color: transparent; }
 .ba-input:disabled { opacity: var(--disabled-opacity); cursor: default; }
 .ba-input--lg { height: var(--field-lg); font-size: var(--size-large); }
 .ba-input--mono { font-family: var(--font-mono); }
+/* Bare (phase 5): a writing surface (To, Cc, Bcc, Subject, the bodies, Search): no box and no ring,
+   clicked or Tabbed into; the caret shows where you are (rule K3, revised 2026-11-16). Its type,
+   width and room are the surface's own. */
+.ba-input--bare { width: auto; height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; line-height: normal; }
+.ba-input--bare:focus,
+.ba-input--bare:focus-visible { outline: none; }
 /* Inline in a sentence ("Archive threads older than 30 days") */
 .ba-input--inline { width: 56px; height: 32px; padding: 0 var(--space-2); }
 .ba-textarea { height: auto; padding: 10px var(--space-3); line-height: 1.55; resize: vertical; }
@@ -230,6 +281,16 @@
     color: var(--text-1);
     outline: none;
 }
+/* Reading width (phase 5): a new message, as wide as the reading card */
+.ba-dialog--reading { width: var(--reading-max); }
+/* Alert (phase 5): over everything on the critical layer, no close; an icon, the title, the words, one
+   action across the dialog, and a line under it (signed out) */
+.ba-layer--critical { z-index: var(--layer-critical); }
+.ba-dialog--alert { width: 440px; gap: var(--space-4); padding: var(--space-6); }
+.ba-dialog--alert > svg { color: var(--text-3); }
+.ba-dialog__words { margin: 0; font-size: var(--size-body); line-height: 1.6; color: var(--text-3); }
+.ba-dialog--alert .ba-dialog__actions { display: flex; flex-direction: column; padding: 0; border: 0; }
+.ba-dialog__after { font-size: var(--size-small); color: var(--text-4); }
 .ba-dialog__form { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
 .ba-dialog__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-5) var(--space-5) 0 var(--space-6); flex-shrink: 0; }
 .ba-dialog__title { margin: 0; font-size: var(--size-title); line-height: 24px; font-weight: var(--weight-medium); }
